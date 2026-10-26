@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">RydeCam</string>
+    <string name="notification_channel_name">RydeCam Background Recording</string>
+    <string name="notification_channel_desc">Active persistent notification while RydeCam dashcam is recording</string>
+</resources>

@@ -1,0 +1,12 @@
+{
+  "name": "RydeCam",
+  "description": "RydeCam - Production-grade automotive dashcam for Android featuring continuous segmented recording, FIFO storage quotas, G-sensor accident preservation, GPS HUD speed, Google Play Billing, and companion navigation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
