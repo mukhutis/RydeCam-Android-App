@@ -377,7 +377,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Display Speed Units", color = Color.White)
+                    Text("Speed & Distance Units", color = Color.White)
                     Row {
                         Box(
                             modifier = Modifier
@@ -386,7 +386,7 @@ fun SettingsScreen(
                                 .clickable { scope.launch { app.preferencesRepository.updateSpeedUnit("KMH") } }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Text("KM/H", color = if (prefs.speedUnit == "KMH") Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("km/hr", color = if (prefs.speedUnit == "KMH") Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Box(
@@ -396,7 +396,7 @@ fun SettingsScreen(
                                 .clickable { scope.launch { app.preferencesRepository.updateSpeedUnit("MPH") } }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Text("MPH", color = if (prefs.speedUnit == "MPH") Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("m/hr", color = if (prefs.speedUnit == "MPH") Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }

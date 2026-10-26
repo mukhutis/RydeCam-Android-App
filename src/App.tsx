@@ -8,31 +8,98 @@ import { CompanionNavModal } from './components/CompanionNavModal';
 import { AndroidProjectExplorer } from './components/AndroidProjectExplorer';
 import { TestRunnerModal } from './components/TestRunnerModal';
 import { webStorage } from './services/storageManager';
+import { soundAlert } from './services/soundAlertManager';
 import {
   DashcamSettings,
   BillingEntitlements,
   TelemetryData,
   StorageStats,
-  DashcamClip
+  DashcamClip,
+  SpeedLimitSign
 } from './types/dashcam';
 
+/**
+ * @fileoverview RydeCam Automotive Dashcam Cockpit Root Application.
+ *
+ * Coordinates the full automotive dashcam execution loop:
+ * 1. Video Pipeline: Live road visualization with highway simulation or physical camera capture.
+ * 2. Heads-Up Display (HUD): Dark OLED cockpit instrument cluster showing speed, storage, battery, and incident status.
+ * 3. Optical Traffic Sign Recognition (TSR): Automated speed limit detection and audible overspeed warning chimes.
+ * 4. G-Sensor & Incident Engine: Continuous acceleration monitoring with automated pre/post-event clip locking.
+ * 5. Storage Quota & FIFO Recycler: Circular buffer retention with protected file safeguards.
+ * 6. Power Management: Battery status synchronization via Navigator Battery API with 12V automotive power simulation.
+ *
+ * @module App
+ */
+
+/** LocalStorage key for persisting user configuration settings */
+const SETTINGS_KEY = 'rydecam_settings_v1';
+/** LocalStorage key for persisting the cumulative trip odometer distance */
+const TRIP_ODOMETER_KEY = 'rydecam_trip_odometer_v1';
+
+/**
+ * Standard factory default cockpit settings for fresh application installations.
+ */
+const DEFAULT_SETTINGS: DashcamSettings = {
+  storageQuotaGb: 16,
+  videoResolution: '1080p',
+  frontCameraEnabled: false,
+  segmentLengthMinutes: 2,
+  audioRecordingEnabled: false,
+  gpsOverlayEnabled: true,
+  speedUnit: 'KMH',
+  accidentDetectionEnabled: true,
+  accidentSensitivity: 'MEDIUM',
+  customGThreshold: 2.5,
+  postEventSeconds: 30,
+  screenOffBehavior: 'DIM_AFTER_1_MIN',
+  companionNavApp: 'google_maps',
+  speedLimitAlertEnabled: true,
+  speedLimitBeepEnabled: true,
+  speedLimitTolerance: 5
+};
+
+/**
+ * Retrieves persisted cockpit settings from browser LocalStorage with fallback to defaults.
+ *
+ * @returns Validated DashcamSettings object
+ */
+function getSavedSettings(): DashcamSettings {
+  try {
+    const saved = localStorage.getItem(SETTINGS_KEY);
+    if (saved) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.warn('Could not read settings from storage', e);
+  }
+  return DEFAULT_SETTINGS;
+}
+
+/**
+ * Retrieves the persistent cumulative trip odometer reading in kilometers from LocalStorage.
+ *
+ * @returns Cumulative trip distance in km (defaults to 14.8 km on first boot)
+ */
+function getSavedTripDistance(): number {
+  try {
+    const saved = localStorage.getItem(TRIP_ODOMETER_KEY);
+    if (saved) {
+      const parsed = parseFloat(saved);
+      if (!isNaN(parsed) && parsed >= 0) return parsed;
+    }
+  } catch (e) {
+    console.warn('Could not read odometer from storage', e);
+  }
+  return 14.8; // Realistic initial trip odometer in km
+}
+
+/**
+ * Root component orchestrating the dashcam recording engine, telemetry loop, and cockpit UI modals.
+ */
 export default function App() {
-  // App state & settings
-  const [settings, setSettings] = useState<DashcamSettings>({
-    storageQuotaGb: 16,
-    videoResolution: '1080p',
-    frontCameraEnabled: false,
-    segmentLengthMinutes: 2,
-    audioRecordingEnabled: false,
-    gpsOverlayEnabled: true,
-    speedUnit: 'KMH',
-    accidentDetectionEnabled: true,
-    accidentSensitivity: 'MEDIUM',
-    customGThreshold: 2.5,
-    postEventSeconds: 30,
-    screenOffBehavior: 'DIM_AFTER_1_MIN',
-    companionNavApp: 'google_maps'
-  });
+  // App state & settings with persistent storage
+  const [settings, setSettings] = useState<DashcamSettings>(getSavedSettings);
 
   const [entitlements, setEntitlements] = useState<BillingEntitlements>({
     isProUnlocked: false,
@@ -52,18 +119,83 @@ export default function App() {
   const [currentGForce, setCurrentGForce] = useState(1.02);
   const [activeIncidentMessage, setActiveIncidentMessage] = useState<string | null>(null);
 
-  // GPS Telemetry
-  const [telemetry, setTelemetry] = useState<TelemetryData>({
-    speedKmh: 68.4,
-    speedMph: 42.5,
-    latitude: 37.7749,
-    longitude: -122.4194,
-    altitudeMeters: 24,
-    bearingDegrees: 48,
-    accuracyMeters: 4.2,
-    isGpsLocked: true,
-    isSignalStale: false,
-    lastUpdateTimestamp: Date.now()
+  // Traffic Sign Recognition (TSR) & Speed Limit State
+  const [detectedSpeedLimit, setDetectedSpeedLimit] = useState<SpeedLimitSign>({
+    limitKmh: 60,
+    limitMph: 40,
+    detectedAtMillis: Date.now(),
+    confidencePercent: 98,
+    signType: 'STANDARD',
+    source: 'OPTICAL_TSR'
+  });
+  const [tsrDetectionNotice, setTsrDetectionNotice] = useState<string | null>(null);
+
+  // Device Battery & 12V Power Charging State
+  const [batteryLevel, setBatteryLevel] = useState(94);
+  const [isCharging, setIsCharging] = useState(true);
+
+  // Read real browser Battery API if supported on device
+  useEffect(() => {
+    let batteryObj: any = null;
+
+    const updateBatteryStatus = () => {
+      if (batteryObj) {
+        setBatteryLevel(Math.round(batteryObj.level * 100));
+        setIsCharging(batteryObj.charging);
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && 'getBattery' in navigator) {
+      (navigator as any).getBattery().then((battery: any) => {
+        batteryObj = battery;
+        updateBatteryStatus();
+        battery.addEventListener('chargingchange', updateBatteryStatus);
+        battery.addEventListener('levelchange', updateBatteryStatus);
+      }).catch(() => {
+        // Fall back to automotive 12V power state
+      });
+    }
+
+    return () => {
+      if (batteryObj) {
+        batteryObj.removeEventListener('chargingchange', updateBatteryStatus);
+        batteryObj.removeEventListener('levelchange', updateBatteryStatus);
+      }
+    };
+  }, []);
+
+  // Battery drain / charge simulation ticker
+  useEffect(() => {
+    const batteryTimer = setInterval(() => {
+      setBatteryLevel(prev => {
+        if (isCharging) {
+          return Math.min(100, prev + (prev < 100 ? 1 : 0));
+        } else {
+          return Math.max(5, prev - 1);
+        }
+      });
+    }, 20000);
+
+    return () => clearInterval(batteryTimer);
+  }, [isCharging]);
+
+  // GPS Telemetry with persistent trip distance
+  const [telemetry, setTelemetry] = useState<TelemetryData>(() => {
+    const initialTripKm = getSavedTripDistance();
+    return {
+      speedKmh: 68.4,
+      speedMph: 42.5,
+      tripDistanceKm: initialTripKm,
+      tripDistanceMiles: initialTripKm * 0.621371,
+      latitude: 37.7749,
+      longitude: -122.4194,
+      altitudeMeters: 24,
+      bearingDegrees: 48,
+      accuracyMeters: 4.2,
+      isGpsLocked: true,
+      isSignalStale: false,
+      lastUpdateTimestamp: Date.now()
+    };
   });
 
   // Modals state
@@ -73,6 +205,15 @@ export default function App() {
   const [showNavCompanion, setShowNavCompanion] = useState(false);
   const [showProjectExplorer, setShowProjectExplorer] = useState(false);
   const [showTestRunner, setShowTestRunner] = useState(false);
+
+  // Persist settings changes so speed unit, quotas, and preferences survive restart
+  useEffect(() => {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) {
+      console.warn('Could not persist settings', e);
+    }
+  }, [settings]);
 
   // Sync quota changes with webStorage
   useEffect(() => {
@@ -107,6 +248,7 @@ export default function App() {
     const is4k = settings.videoResolution === '4K';
     const duration = settings.segmentLengthMinutes * 60;
     const fileBytes = duration * (is4k ? 6_000_000 : 2_500_000);
+    const distanceCoveredKm = parseFloat(((duration * telemetry.speedKmh) / 3600).toFixed(2));
 
     const newClip: DashcamClip = {
       id: 'clip_' + now,
@@ -120,6 +262,7 @@ export default function App() {
       isProtected: false,
       averageSpeedKmh: telemetry.speedKmh,
       maxSpeedKmh: telemetry.speedKmh + 4.5,
+      distanceCoveredKm,
       latitude: telemetry.latitude,
       longitude: telemetry.longitude,
       hasAudio: settings.audioRecordingEnabled,
@@ -131,7 +274,7 @@ export default function App() {
     setStorageStats(webStorage.getStorageStats());
   };
 
-  // Speedometer driving simulation loop (Smoothly fluctuates speed between 58 and 78 km/h)
+  // Speedometer driving simulation loop & trip odometer accumulation
   useEffect(() => {
     const speedInterval = setInterval(() => {
       setTelemetry(prev => {
@@ -143,10 +286,25 @@ export default function App() {
         const roadG = 1.0 + (Math.random() - 0.5) * 0.08;
         setCurrentGForce(roadG);
 
+        // Distance accumulated in this 1.2s tick
+        const dtHours = 1.2 / 3600;
+        const deltaKm = targetKmh * dtHours;
+        const nextTripKm = prev.tripDistanceKm + deltaKm;
+        const nextTripMiles = nextTripKm * 0.621371;
+
+        // Persist odometer periodically
+        try {
+          localStorage.setItem(TRIP_ODOMETER_KEY, nextTripKm.toFixed(3));
+        } catch {
+          // ignore quota storage issues
+        }
+
         return {
           ...prev,
           speedKmh: targetKmh,
           speedMph: targetMph,
+          tripDistanceKm: nextTripKm,
+          tripDistanceMiles: nextTripMiles,
           latitude: prev.latitude + 0.00008,
           longitude: prev.longitude + 0.00005,
           lastUpdateTimestamp: Date.now()
@@ -260,11 +418,124 @@ export default function App() {
     }
   };
 
+  // Traffic Sign Recognition & Overspeed calculations
+  const isMph = settings.speedUnit === 'MPH';
+  const currentSpeed = isMph ? telemetry.speedMph : telemetry.speedKmh;
+  const activeLimit = isMph ? detectedSpeedLimit.limitMph : detectedSpeedLimit.limitKmh;
+  const tolerance = settings.speedLimitTolerance || 0;
+  const isOverSpeed = settings.speedLimitAlertEnabled && (currentSpeed > activeLimit + tolerance);
+  const overspeedAmount = Math.max(0, Math.round(currentSpeed - activeLimit));
+
+  // Play acoustic warning beeps above speed limit
+  useEffect(() => {
+    if (isOverSpeed && settings.speedLimitBeepEnabled) {
+      soundAlert.playOverspeedBeep();
+    }
+  }, [isOverSpeed, settings.speedLimitBeepEnabled, telemetry.speedKmh]);
+
+  // Handle speed limit sign recognized from front camera or road simulation
+  const handleSignRecognized = (limitKmh: number, limitMph: number) => {
+    if (detectedSpeedLimit.limitKmh === limitKmh) return;
+
+    setDetectedSpeedLimit({
+      limitKmh,
+      limitMph,
+      detectedAtMillis: Date.now(),
+      confidencePercent: 98,
+      signType: 'STANDARD',
+      source: 'OPTICAL_TSR'
+    });
+
+    soundAlert.playSignDetectedChime();
+    const signLabel = isMph ? `${limitMph} m/hr` : `${limitKmh} km/hr`;
+    setTsrDetectionNotice(`TSR: Road Sign Detected (${signLabel})`);
+    setTimeout(() => setTsrDetectionNotice(null), 3500);
+  };
+
+  // Cycle speed limit on HUD sign click
+  const handleCycleSpeedLimit = () => {
+    const kmhCycle = [30, 40, 50, 60, 70, 80, 90, 100, 110];
+    const mphCycle = [20, 25, 30, 35, 45, 50, 55, 65, 70];
+
+    if (isMph) {
+      const curIdx = mphCycle.indexOf(detectedSpeedLimit.limitMph);
+      const nextIdx = (curIdx + 1) % mphCycle.length;
+      const nextMph = mphCycle[nextIdx];
+      const nextKmh = Math.round(nextMph / 0.621371);
+      setDetectedSpeedLimit({
+        limitKmh: nextKmh,
+        limitMph: nextMph,
+        detectedAtMillis: Date.now(),
+        confidencePercent: 100,
+        signType: 'STANDARD',
+        source: 'MANUAL'
+      });
+      setTsrDetectionNotice(`Speed Limit set to ${nextMph} m/hr`);
+    } else {
+      const curIdx = kmhCycle.indexOf(detectedSpeedLimit.limitKmh);
+      const nextIdx = (curIdx + 1) % kmhCycle.length;
+      const nextKmh = kmhCycle[nextIdx];
+      const nextMph = Math.round(nextKmh * 0.621371);
+      setDetectedSpeedLimit({
+        limitKmh: nextKmh,
+        limitMph: nextMph,
+        detectedAtMillis: Date.now(),
+        confidencePercent: 100,
+        signType: 'STANDARD',
+        source: 'MANUAL'
+      });
+      setTsrDetectionNotice(`Speed Limit set to ${nextKmh} km/hr`);
+    }
+    soundAlert.playSignDetectedChime();
+    setTimeout(() => setTsrDetectionNotice(null), 3000);
+  };
+
+  // Toggle speed limit acoustic alert chime
+  const handleToggleBeepSound = () => {
+    setSettings(prev => ({
+      ...prev,
+      speedLimitBeepEnabled: !prev.speedLimitBeepEnabled
+    }));
+  };
+
+  // Toggle speed & distance unit between km/hr (km) and m/hr (miles)
+  const handleToggleSpeedUnit = () => {
+    setSettings(prev => ({
+      ...prev,
+      speedUnit: prev.speedUnit === 'KMH' ? 'MPH' : 'KMH'
+    }));
+  };
+
+  // Reset trip odometer counter to zero
+  const handleResetTrip = () => {
+    setTelemetry(prev => ({
+      ...prev,
+      tripDistanceKm: 0,
+      tripDistanceMiles: 0
+    }));
+    try {
+      localStorage.setItem(TRIP_ODOMETER_KEY, '0');
+    } catch (e) {
+      console.warn('Could not reset trip odometer in storage', e);
+    }
+  };
+
+  // Toggle 12V automotive charging power state
+  const handleToggleCharging = () => {
+    setIsCharging(prev => !prev);
+  };
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-neutral-950 font-sans">
       {/* 1. Live Road Canvas / Camera Preview */}
       <RoadCanvas
         speedKmh={telemetry.speedKmh}
+        speedUnit={settings.speedUnit}
+        tripDistanceKm={telemetry.tripDistanceKm}
+        activeSpeedLimitKmh={detectedSpeedLimit.limitKmh}
+        batteryLevel={batteryLevel}
+        isCharging={isCharging}
+        onSignRecognized={handleSignRecognized}
         isRecording={isRecording}
         isDualCameraActive={settings.frontCameraEnabled && entitlements.canUseFrontCamera}
       />
@@ -280,7 +551,19 @@ export default function App() {
         speedUnit={settings.speedUnit}
         currentGForce={currentGForce}
         activeIncidentMessage={activeIncidentMessage}
+        detectedSpeedLimit={detectedSpeedLimit}
+        isOverSpeed={isOverSpeed}
+        overspeedAmount={overspeedAmount}
+        speedLimitBeepEnabled={settings.speedLimitBeepEnabled}
+        tsrDetectionNotice={tsrDetectionNotice}
+        batteryLevel={batteryLevel}
+        isCharging={isCharging}
+        onToggleCharging={handleToggleCharging}
         onToggleRecording={() => setIsRecording(prev => !prev)}
+        onToggleSpeedUnit={handleToggleSpeedUnit}
+        onResetTrip={handleResetTrip}
+        onToggleBeepSound={handleToggleBeepSound}
+        onCycleSpeedLimit={handleCycleSpeedLimit}
         onTriggerManualLock={handleTriggerManualLock}
         onSimulateShock={(g, label) => handleShockDetected(g, label)}
         onOpenLibrary={() => setShowGallery(true)}
@@ -296,6 +579,7 @@ export default function App() {
         onClose={() => setShowGallery(false)}
         clips={clips}
         storageStats={storageStats}
+        speedUnit={settings.speedUnit}
         onToggleProtection={(id) => {
           webStorage.toggleProtection(id);
           setClips(webStorage.getClips());

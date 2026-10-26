@@ -11,9 +11,13 @@ import {
   Clock,
   Compass,
   CheckCircle,
-  Smartphone
+  Smartphone,
+  Bell,
+  VolumeX,
+  Eye
 } from 'lucide-react';
 import { DashcamSettings, BillingEntitlements, StorageQuotaOption, VideoResolutionOption, SpeedUnitOption, SensitivityOption } from '../types/dashcam';
+import { soundAlert } from '../services/soundAlertManager';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -319,24 +323,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* SECTION 4: SPEED UNITS & SEGMENT DURATION */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Speed Unit */}
+            {/* Speed & Distance Units */}
             <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3.5">
-              <span className="text-xs font-bold text-white block mb-1">Speed Display Units</span>
-              <p className="text-[11px] text-neutral-400 mb-3">Unit shown on HUD and burned to video</p>
-              <div className="flex gap-2">
-                {(['KMH', 'MPH'] as SpeedUnitOption[]).map(unit => (
-                  <button
-                    key={unit}
-                    onClick={() => onUpdateSettings({ speedUnit: unit })}
-                    className={`flex-1 py-1.5 rounded-lg font-mono text-xs font-bold transition border ${
-                      settings.speedUnit === unit
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500'
-                        : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
-                    }`}
-                  >
-                    {unit}
-                  </button>
-                ))}
+              <span className="text-xs font-bold text-white block mb-1">Speed & Distance Units</span>
+              <p className="text-[11px] text-neutral-400 mb-3">Telemetry on HUD, video watermarks & trip odometer</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => onUpdateSettings({ speedUnit: 'KMH' })}
+                  className={`py-2 px-2.5 rounded-lg text-left transition border ${
+                    settings.speedUnit === 'KMH'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 shadow-sm'
+                      : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                  }`}
+                >
+                  <div className="font-mono text-xs font-bold">km/hr</div>
+                  <div className="text-[10px] text-neutral-400 mt-0.5 font-sans">Distance: km</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onUpdateSettings({ speedUnit: 'MPH' })}
+                  className={`py-2 px-2.5 rounded-lg text-left transition border ${
+                    settings.speedUnit === 'MPH'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 shadow-sm'
+                      : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                  }`}
+                >
+                  <div className="font-mono text-xs font-bold">m/hr</div>
+                  <div className="text-[10px] text-neutral-400 mt-0.5 font-sans">Distance: miles</div>
+                </button>
               </div>
             </div>
 
@@ -362,7 +378,93 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* SECTION 5: IN-CABIN AUDIO RECORDING */}
+          {/* SECTION 5: SPEED LIMIT DETECTION & OVERSPEED BEEP ALERTS */}
+          <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-4 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Eye className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+                  5. Traffic Sign Recognition (TSR) & Speed Limit Alerts
+                </h3>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={settings.speedLimitAlertEnabled}
+                  onChange={(e) => onUpdateSettings({ speedLimitAlertEnabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+              </label>
+            </div>
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              Optical sign recognition identifies roadside speed limits. When your vehicle exceeds the posted limit, RydeCam warns you visually on the speedometer and plays acoustic alert chimes.
+            </p>
+
+            {settings.speedLimitAlertEnabled && (
+              <div className="pt-2 border-t border-neutral-800/80 space-y-3">
+                {/* Audio Beep Switch */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-amber-400" />
+                    <div>
+                      <span className="text-xs font-bold text-white block">Acoustic Warning Beeps</span>
+                      <span className="text-[11px] text-neutral-400">Play dual-tone alert chime above the speed limit</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => soundAlert.playOverspeedBeep(true)}
+                      className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-mono border border-neutral-700 transition"
+                      title="Test the automotive warning chime"
+                    >
+                      Test Chime 🔔
+                    </button>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.speedLimitBeepEnabled}
+                        onChange={(e) => onUpdateSettings({ speedLimitBeepEnabled: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Warning Tolerance Threshold */}
+                <div>
+                  <span className="text-[11px] font-bold text-neutral-300 block mb-1">
+                    Alert Sensitivity & Tolerance Threshold
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { val: 0, label: 'Strict (+0)', desc: 'Instant alert' },
+                      { val: 5, label: '+5 ' + (settings.speedUnit === 'MPH' ? 'mph' : 'km/h'), desc: 'Standard buffer' },
+                      { val: 10, label: '+10 ' + (settings.speedUnit === 'MPH' ? 'mph' : 'km/h'), desc: 'Highway buffer' }
+                    ].map(tol => (
+                      <button
+                        key={tol.val}
+                        type="button"
+                        onClick={() => onUpdateSettings({ speedLimitTolerance: tol.val })}
+                        className={`p-2 rounded-lg text-left transition border ${
+                          settings.speedLimitTolerance === tol.val
+                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500 shadow-sm'
+                            : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-mono text-xs font-bold">{tol.label}</div>
+                        <div className="text-[9px] text-neutral-500">{tol.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 6: IN-CABIN AUDIO RECORDING */}
           <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3.5 flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">

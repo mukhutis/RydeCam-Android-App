@@ -1,17 +1,54 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, RefreshCw, AlertCircle, Video } from 'lucide-react';
+import { SpeedUnitOption } from '../types/dashcam';
 
-interface RoadCanvasProps {
+/**
+ * Properties for the RoadCanvas dynamic camera preview and video stream renderer.
+ */
+export interface RoadCanvasProps {
+  /** Current vehicle ground speed in km/h driving the animation loop frequency */
   speedKmh: number;
+  /** Speed measurement unit ('KMH' | 'MPH') for burnt-in OSD watermark */
+  speedUnit?: SpeedUnitOption;
+  /** Cumulative trip distance in km for burnt-in OSD watermark */
+  tripDistanceKm?: number;
+  /** Recording state driving the red REC status watermark */
   isRecording: boolean;
+  /** Toggles Picture-in-Picture (PiP) secondary cabin camera view */
   isDualCameraActive: boolean;
+  /** Active speed limit in km/h for TSR sign generation and sync */
+  activeSpeedLimitKmh?: number;
+  /** Current battery level percentage (0-100) for OSD watermark */
+  batteryLevel?: number;
+  /** Power status flag indicating if device is plugged into 12V automotive power */
+  isCharging?: boolean;
+  /** Callback fired when an optical road sign crosses the detection horizon */
+  onSignRecognized?: (limitKmh: number, limitMph: number) => void;
+  /** Callback fired if physical webcam access fails or is denied */
   onWebcamError?: (err: string) => void;
 }
 
+/**
+ * RoadCanvas: Dual-mode highway simulator & real webcam video stream renderer.
+ *
+ * Implements:
+ * 1. Pseudo-3D Perspective Projection Engine: Renders an asphalt highway with lane markings,
+ *    curbs, mountains, and traffic vehicles scaled dynamically using a 1/z depth equation.
+ * 2. Optical Traffic Sign Recognition (TSR) Emulation: Renders roadside speed limit posts that
+ *    travel towards the camera viewpoint. When depth z < 0.22, fires `onSignRecognized`.
+ * 3. MediaDevices Camera Pipeline: Enables live front/back webcam streaming via `navigator.mediaDevices.getUserMedia`.
+ * 4. High-contrast OSD Watermark: Standardized bottom timestamp, coordinates, speed, battery, and REC status.
+ */
 export const RoadCanvas: React.FC<RoadCanvasProps> = ({
   speedKmh,
+  speedUnit = 'KMH',
+  tripDistanceKm = 0,
   isRecording,
   isDualCameraActive,
+  activeSpeedLimitKmh,
+  batteryLevel = 94,
+  isCharging = true,
+  onSignRecognized,
   onWebcamError
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -29,6 +66,21 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
     { x: -0.3, z: 0.8, speed: 0.005, color: '#e11d48' },
     { x: 0.35, z: 0.5, speed: 0.007, color: '#38bdf8' }
   ]);
+
+  // Roadside speed limit sign state for TSR detection
+  const roadsideSignRef = useRef<{
+    z: number;
+    x: number;
+    limitKmh: number;
+    limitMph: number;
+    hasTriggered: boolean;
+  }>({
+    z: 0.85,
+    x: 0.68,
+    limitKmh: 60,
+    limitMph: 40,
+    hasTriggered: false
+  });
 
   // Handle Real Camera toggle
   const toggleRealCamera = async () => {
@@ -252,7 +304,90 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         ctx.fillRect(cx + cw / 2 - cw * 0.2 - 2, cy - ch * 0.4, cw * 0.2, ch * 0.3);
       });
 
-      // 5. Headlight beam reflection on road
+      // 5. Roadside Speed Limit Sign with Traffic Sign Recognition (TSR)
+      const sign = roadsideSignRef.current;
+      sign.z = sign.z - 0.003 * speedFactor;
+
+      if (sign.z <= 0.05) {
+        sign.z = 0.96;
+        sign.hasTriggered = false;
+        // Cycle to next realistic road limit
+        const nextKmh = [50, 60, 70, 80, 60, 90, 100];
+        const nextMph = [30, 40, 45, 50, 40, 55, 65];
+        const idx = Math.floor(Math.random() * nextKmh.length);
+        sign.limitKmh = nextKmh[idx];
+        sign.limitMph = nextMph[idx];
+      }
+
+      const sz = 1 - sign.z; // 0 to 1 (closer = larger)
+      if (sz > 0.08 && sz < 0.98) {
+        const sy = vanishingY + Math.pow(sz, 2.2) * (height - vanishingY) * 0.85;
+        const sx = vanishingX + sign.x * Math.pow(sz, 1.8) * width * 0.72;
+        const radius = Math.max(7, sz * 26);
+        const poleHeight = radius * 2.8;
+
+        // Ground post
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = Math.max(2, sz * 4);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx, sy - poleHeight);
+        ctx.stroke();
+
+        // Circular speed limit sign (white background + red outer ring)
+        const signCenterY = sy - poleHeight;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(sx, signCenterY, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#dc2626'; // Bold red ring
+        ctx.lineWidth = Math.max(2.5, radius * 0.22);
+        ctx.stroke();
+
+        // Number on sign
+        const displayLimit = speedUnit === 'MPH' ? sign.limitMph : sign.limitKmh;
+        ctx.fillStyle = '#000000';
+        ctx.font = `900 ${Math.round(radius * 0.95)}px "JetBrains Mono", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${displayLimit}`, sx, signCenterY);
+
+        // Optical Camera TSR Detection Bounding Box (when in camera focal range)
+        if (sz >= 0.32 && sz <= 0.78) {
+          const boxPad = radius * 1.4;
+          ctx.strokeStyle = '#06b6d4';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(sx - boxPad, signCenterY - boxPad, boxPad * 2, boxPad * 2);
+
+          // Corner brackets
+          const bl = 6;
+          ctx.strokeStyle = '#22d3ee';
+          ctx.lineWidth = 2.5;
+          // top-left
+          ctx.beginPath(); ctx.moveTo(sx - boxPad, signCenterY - boxPad + bl); ctx.lineTo(sx - boxPad, signCenterY - boxPad); ctx.lineTo(sx - boxPad + bl, signCenterY - boxPad); ctx.stroke();
+          // bottom-right
+          ctx.beginPath(); ctx.moveTo(sx + boxPad, signCenterY + boxPad - bl); ctx.lineTo(sx + boxPad, signCenterY + boxPad); ctx.lineTo(sx + boxPad - bl, signCenterY + boxPad); ctx.stroke();
+
+          // TSR Detection Tag
+          ctx.fillStyle = 'rgba(8, 145, 178, 0.9)';
+          ctx.fillRect(sx - boxPad, signCenterY - boxPad - 16, 88, 14);
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          ctx.textAlign = 'left';
+          ctx.fillText(`TSR: ${displayLimit} (98%)`, sx - boxPad + 3, signCenterY - boxPad - 5);
+
+          // Fire sign recognized callback once per approach
+          if (sz >= 0.42 && !sign.hasTriggered) {
+            sign.hasTriggered = true;
+            if (onSignRecognized) {
+              onSignRecognized(sign.limitKmh, sign.limitMph);
+            }
+          }
+        }
+      }
+
+      // 6. Headlight beam reflection on road
       const beamGrad = ctx.createRadialGradient(
         vanishingX, height, 50,
         vanishingX, height * 0.65, width * 0.4
@@ -273,6 +408,21 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, width, height);
 
+      // Dashcam bottom OSD watermark
+      const speedTxt = speedUnit === 'MPH' ? `${Math.round(speedKmh * 0.621371)} M/HR` : `${Math.round(speedKmh)} KM/HR`;
+      const distTxt = speedUnit === 'MPH' ? `${(tripDistanceKm * 0.621371).toFixed(1)} MI` : `${tripDistanceKm.toFixed(1)} KM`;
+      const limitVal = activeSpeedLimitKmh ? (speedUnit === 'MPH' ? Math.round(activeSpeedLimitKmh * 0.621371) : activeSpeedLimitKmh) : null;
+      const limitTxt = limitVal ? ` • LIMIT: ${limitVal}` : '';
+      const batTxt = ` • BAT: ${batteryLevel}%${isCharging ? ' ⚡' : ''}`;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      ctx.fillRect(16, height - 34, Math.min(width - 32, 600), 22);
+      ctx.fillStyle = '#6ee7b7';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`RYDECAM • ${speedTxt}${limitTxt} • TRIP: ${distTxt}${batTxt} • 37.7749°N 122.4194°W`, 24, height - 23);
+
       animFrameRef.current = requestAnimationFrame(render);
     };
 
@@ -284,7 +434,7 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [useRealCamera, speedKmh]);
+  }, [useRealCamera, speedKmh, speedUnit, tripDistanceKm, activeSpeedLimitKmh, onSignRecognized, batteryLevel, isCharging]);
 
   // Handle window resizing for sharp canvas
   useEffect(() => {
@@ -359,6 +509,28 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
               <p className="text-[10px] text-neutral-400 font-medium">Front Camera Stream</p>
               <p className="text-[9px] text-neutral-500">1080p Cabin Active</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Real camera Optical TSR scanning reticle & live watermark */}
+      {useRealCamera && (
+        <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 z-10">
+          <div className="mt-14 self-center px-3 py-1 rounded bg-black/70 border border-cyan-500/60 text-cyan-300 font-mono text-[10px] flex items-center gap-1.5 backdrop-blur-sm">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <span>OPTICAL TSR SIGN RECOGNITION ACTIVE</span>
+          </div>
+
+          <div className="self-center w-64 h-36 border border-cyan-500/30 rounded-xl relative flex items-center justify-center">
+            <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-cyan-400" />
+            <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-cyan-400" />
+            <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-cyan-400" />
+            <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-cyan-400" />
+            <span className="text-[10px] text-cyan-400/70 font-mono">TSR SCAN REGION</span>
+          </div>
+
+          <div className="bg-black/75 px-3 py-1.5 rounded text-[10px] font-mono text-emerald-400 self-start">
+            RYDECAM LIVE • {speedUnit === 'MPH' ? `${Math.round(speedKmh * 0.621371)} M/HR` : `${Math.round(speedKmh)} KM/HR`} {activeSpeedLimitKmh ? `• LIMIT: ${speedUnit === 'MPH' ? Math.round(activeSpeedLimitKmh * 0.621371) : activeSpeedLimitKmh}` : ''} • BAT: {batteryLevel}% {isCharging ? '⚡ CHG' : ''}
           </div>
         </div>
       )}

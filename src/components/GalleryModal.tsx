@@ -15,13 +15,14 @@ import {
   PlusCircle,
   Video
 } from 'lucide-react';
-import { DashcamClip, StorageStats } from '../types/dashcam';
+import { DashcamClip, StorageStats, SpeedUnitOption } from '../types/dashcam';
 
 interface GalleryModalProps {
   isOpen: boolean;
   onClose: () => void;
   clips: DashcamClip[];
   storageStats: StorageStats;
+  speedUnit?: SpeedUnitOption;
   onToggleProtection: (clipId: string) => void;
   onDeleteClip: (clipId: string) => void;
   onAddSimulatedClip: () => void;
@@ -32,6 +33,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   onClose,
   clips,
   storageStats,
+  speedUnit = 'KMH',
   onToggleProtection,
   onDeleteClip,
   onAddSimulatedClip
@@ -39,6 +41,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   const [activeTab, setActiveTab] = useState<'normal' | 'protected'>('normal');
   const [selectedClip, setSelectedClip] = useState<DashcamClip | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<DashcamClip | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -192,7 +195,13 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                       {clip.maxSpeedKmh > 0 && (
                         <span className="flex items-center gap-1 text-emerald-400">
                           <Gauge className="w-3 h-3 text-emerald-500" />
-                          Peak: {clip.maxSpeedKmh.toFixed(0)} km/h
+                          Peak: {speedUnit === 'MPH' ? `${Math.round(clip.maxSpeedKmh * 0.621371)} m/hr` : `${Math.round(clip.maxSpeedKmh)} km/hr`}
+                        </span>
+                      )}
+                      {clip.distanceCoveredKm !== undefined && (
+                        <span className="flex items-center gap-1 text-cyan-400">
+                          <span>•</span>
+                          Dist: {speedUnit === 'MPH' ? `${(clip.distanceCoveredKm * 0.621371).toFixed(1)} mi` : `${clip.distanceCoveredKm.toFixed(1)} km`}
                         </span>
                       )}
                     </div>
@@ -271,8 +280,18 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                 </div>
 
                 {/* Replay HUD Overlay */}
-                <div className="absolute top-3 left-3 bg-black/80 px-2 py-1 rounded text-[10px] font-mono text-cyan-300">
-                  SPEED: {selectedClip.maxSpeedKmh.toFixed(0)} KM/H • GPS: {selectedClip.latitude.toFixed(4)}, {selectedClip.longitude.toFixed(4)}
+                <div className="absolute top-3 left-3 bg-black/80 px-2.5 py-1 rounded text-[10px] font-mono text-cyan-300 flex items-center gap-2">
+                  <span>
+                    SPEED: {speedUnit === 'MPH' ? `${Math.round(selectedClip.maxSpeedKmh * 0.621371)} M/HR` : `${Math.round(selectedClip.maxSpeedKmh)} KM/HR`}
+                  </span>
+                  {selectedClip.distanceCoveredKm !== undefined && (
+                    <span>
+                      • DIST: {speedUnit === 'MPH' ? `${(selectedClip.distanceCoveredKm * 0.621371).toFixed(1)} MI` : `${selectedClip.distanceCoveredKm.toFixed(1)} KM`}
+                    </span>
+                  )}
+                  <span>
+                    • GPS: {selectedClip.latitude.toFixed(4)}, {selectedClip.longitude.toFixed(4)}
+                  </span>
                 </div>
 
                 <div className="absolute bottom-3 left-3 bg-black/80 px-2 py-1 rounded text-[10px] font-mono text-neutral-300">
@@ -284,15 +303,23 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                 <span className="text-xs text-neutral-400 font-mono">
                   {(selectedClip.fileSizeBytes / 1e6).toFixed(0)} MB MP4 Container
                 </span>
-                <button
-                  onClick={() => {
-                    alert(`Simulating Android Intent.ACTION_SEND for file: ${selectedClip.fileName}`);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Share Clip</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {shareNotice && (
+                    <span className="text-[11px] text-emerald-400 font-mono animate-fadeIn">
+                      Intent.ACTION_SEND prepared!
+                    </span>
+                  )}
+                  <button
+                    onClick={() => {
+                      setShareNotice(selectedClip.fileName);
+                      setTimeout(() => setShareNotice(null), 3000);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share Clip</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

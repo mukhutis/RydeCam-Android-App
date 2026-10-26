@@ -247,11 +247,26 @@ fun MainRecordingScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = prefs.speedUnit,
+                        text = telemetry.getDisplaySpeedUnit(prefs.speedUnit),
                         color = SpeedometerGreen.copy(alpha = 0.8f),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                }
+
+                // Trip Distance Odometer
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
+                ) {
+                    Text(
+                        text = "TRIP: ${telemetry.getDisplayDistance(prefs.speedUnit)} ${telemetry.getDisplayDistanceUnit(prefs.speedUnit)}",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
 
