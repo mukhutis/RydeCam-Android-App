@@ -1,0 +1,17 @@
+{
+  "short_name": "RydeCam",
+  "name": "RydeCam Automotive Dashcam",
+  "icons": [
+    {
+      "src": "/assets/aistudio/Neon_Road_Camera_Aperture_52fc4fc0.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "display": "standalone",
+  "orientation": "landscape"
+}

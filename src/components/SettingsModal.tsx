@@ -63,12 +63,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Modal Header */}
         <div className="p-4 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/70">
-          <div>
-            <h2 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
-              <Smartphone className="w-5 h-5 text-cyan-400" />
-              <span>RYDECAM CONFIGURATION</span>
-            </h2>
-            <p className="text-xs text-neutral-400">Automotive recording policies, quotas, and sensor calibration</p>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl overflow-hidden border border-cyan-500/50 shadow-md bg-black shrink-0">
+              <img
+                src="/assets/aistudio/Neon_Road_Camera_Aperture_52fc4fc0.png"
+                alt="RydeCam App Icon"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
+                <span>RYDECAM CONFIGURATION</span>
+              </h2>
+              <p className="text-xs text-neutral-400">Automotive recording policies, quotas, and sensor calibration</p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -91,8 +99,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-300">
-                <Star className="w-6 h-6 fill-amber-400 text-amber-400" />
+              <div className="w-10 h-10 rounded-xl overflow-hidden border border-amber-500/50 shadow-md bg-black shrink-0 relative">
+                <img
+                  src="/assets/aistudio/Neon_Road_Camera_Aperture_52fc4fc0.png"
+                  alt="RydeCam Pro Icon"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute -bottom-1 -right-1 bg-amber-500 rounded-full p-0.5 shadow">
+                  <Star className="w-3 h-3 fill-black text-black" />
+                </div>
               </div>
               <div>
                 <div className="flex items-center gap-2">

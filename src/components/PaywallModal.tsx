@@ -52,8 +52,15 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         {/* Header */}
         <div className="p-5 pb-3 flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/50 flex items-center justify-center text-amber-300 shadow-lg shadow-amber-500/20">
-              <Star className="w-6 h-6 fill-amber-400" />
+            <div className="w-12 h-12 rounded-xl overflow-hidden border border-amber-500/60 shadow-lg shadow-amber-500/20 bg-black shrink-0 relative">
+              <img
+                src="/assets/aistudio/Neon_Road_Camera_Aperture_52fc4fc0.png"
+                alt="RydeCam Pro Icon"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute -bottom-1 -right-1 bg-amber-500 rounded-full p-0.5 shadow">
+                <Star className="w-3.5 h-3.5 fill-black text-black" />
+              </div>
             </div>
             <div>
               <h2 className="text-lg font-black text-white tracking-wide">RYDECAM PRO</h2>

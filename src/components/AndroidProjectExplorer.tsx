@@ -50,6 +50,19 @@ export const AndroidProjectExplorer: React.FC<AndroidProjectExplorerProps> = ({
         zip.file(file.path, file.content);
       }
 
+      // Add high-resolution launcher icon into Android res drawables
+      try {
+        const iconRes = await fetch('/assets/aistudio/Neon_Road_Camera_Aperture_52fc4fc0.png');
+        if (iconRes.ok) {
+          const iconBlob = await iconRes.blob();
+          zip.file('app/src/main/res/mipmap-xxhdpi/ic_launcher.png', iconBlob);
+          zip.file('app/src/main/res/mipmap-xxxhdpi/ic_launcher.png', iconBlob);
+          zip.file('app/src/main/res/drawable/ic_launcher.png', iconBlob);
+        }
+      } catch (iconErr) {
+        console.warn('Could not bundle icon binary into ZIP', iconErr);
+      }
+
       // Add standard gradle wrapper properties
       zip.file('gradle/wrapper/gradle-wrapper.properties',
 `distributionBase=GRADLE_USER_HOME
@@ -88,8 +101,12 @@ validateDistributionUrl=true`);
         {/* Modal Top Bar */}
         <div className="p-4 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/80">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400">
-              <Layers className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-lg overflow-hidden border border-cyan-500/60 shadow-md bg-black shrink-0">
+              <img
+                src="/assets/aistudio/Neon_Road_Camera_Aperture_52fc4fc0.png"
+                alt="RydeCam App Icon"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">

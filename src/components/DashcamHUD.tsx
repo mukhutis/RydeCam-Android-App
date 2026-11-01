@@ -198,10 +198,16 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
             <div className={`flex items-center gap-2 pr-3 border-r ${
               nightModeEnabled ? 'border-amber-950/80' : 'border-neutral-800'
             }`}>
-              <div className={`w-7 h-7 rounded-lg border flex items-center justify-center ${
-                nightModeEnabled ? 'bg-red-950/60 border-red-700/60' : 'bg-red-600/20 border-red-500/50'
+              <div className={`w-8 h-8 rounded-lg overflow-hidden border flex items-center justify-center shrink-0 shadow-md ${
+                nightModeEnabled
+                  ? 'border-amber-700/70 bg-black shadow-amber-950/40'
+                  : 'border-cyan-500/60 bg-black shadow-cyan-950/40'
               }`}>
-                <Video className="w-4 h-4 text-red-500" />
+                <img
+                  src="/assets/aistudio/Neon_Road_Camera_Aperture_52fc4fc0.png"
+                  alt="RydeCam App Icon"
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5 leading-none">
