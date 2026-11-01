@@ -9,13 +9,16 @@ import { AndroidProjectExplorer } from './components/AndroidProjectExplorer';
 import { TestRunnerModal } from './components/TestRunnerModal';
 import { webStorage } from './services/storageManager';
 import { soundAlert } from './services/soundAlertManager';
+import { lightSensor } from './services/lightSensorManager';
 import {
   DashcamSettings,
   BillingEntitlements,
   TelemetryData,
   StorageStats,
   DashcamClip,
-  SpeedLimitSign
+  SpeedLimitSign,
+  NightModePreference,
+  AmbientLightData
 } from './types/dashcam';
 
 /**
@@ -56,7 +59,10 @@ const DEFAULT_SETTINGS: DashcamSettings = {
   companionNavApp: 'google_maps',
   speedLimitAlertEnabled: true,
   speedLimitBeepEnabled: true,
-  speedLimitTolerance: 5
+  speedLimitTolerance: 5,
+  nightModeEnabled: false,
+  nightModePreference: 'AUTO',
+  autoNightLuxThreshold: 25
 };
 
 /**
@@ -133,6 +139,24 @@ export default function App() {
   // Device Battery & 12V Power Charging State
   const [batteryLevel, setBatteryLevel] = useState(94);
   const [isCharging, setIsCharging] = useState(true);
+
+  // Ambient Light Sensing & Automatic Night Mode State
+  const [ambientLight, setAmbientLight] = useState<AmbientLightData>(() => lightSensor.getAmbientData());
+
+  useEffect(() => {
+    lightSensor.setThresholdLux(settings.autoNightLuxThreshold || 25);
+    const unsubscribe = lightSensor.subscribe((data) => {
+      setAmbientLight(data);
+    });
+    return unsubscribe;
+  }, [settings.autoNightLuxThreshold]);
+
+  // Compute effective night mode active state based on preference ('AUTO' | 'ALWAYS_ON' | 'ALWAYS_OFF')
+  const isNightModeEffective = settings.nightModePreference === 'ALWAYS_ON'
+    ? true
+    : settings.nightModePreference === 'ALWAYS_OFF'
+      ? false
+      : ambientLight.isLowLight;
 
   // Read real browser Battery API if supported on device
   useEffect(() => {
@@ -520,13 +544,54 @@ export default function App() {
     }
   };
 
+  // Periodically evaluate solar twilight using vehicle GPS coordinates
+  useEffect(() => {
+    lightSensor.evaluateSolarTime(telemetry.latitude, telemetry.longitude);
+  }, [telemetry.latitude, telemetry.longitude]);
+
+  // Synchronize effective night mode state into settings
+  useEffect(() => {
+    if (settings.nightModeEnabled !== isNightModeEffective) {
+      setSettings(prev => ({ ...prev, nightModeEnabled: isNightModeEffective }));
+    }
+  }, [isNightModeEffective, settings.nightModeEnabled]);
+
+  // Toggle night mode policy: cycles AUTO -> ALWAYS_ON -> ALWAYS_OFF -> AUTO
+  const handleToggleNightMode = () => {
+    setSettings(prev => {
+      const currentPref = prev.nightModePreference || 'AUTO';
+      let nextPref: NightModePreference;
+      if (currentPref === 'AUTO') {
+        nextPref = isNightModeEffective ? 'ALWAYS_OFF' : 'ALWAYS_ON';
+      } else if (currentPref === 'ALWAYS_ON') {
+        nextPref = 'ALWAYS_OFF';
+      } else {
+        nextPref = 'AUTO';
+      }
+
+      const nextNight = nextPref === 'ALWAYS_ON'
+        ? true
+        : nextPref === 'ALWAYS_OFF'
+          ? false
+          : ambientLight.isLowLight;
+
+      return {
+        ...prev,
+        nightModePreference: nextPref,
+        nightModeEnabled: nextNight
+      };
+    });
+  };
+
   // Toggle 12V automotive charging power state
   const handleToggleCharging = () => {
     setIsCharging(prev => !prev);
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-neutral-950 font-sans">
+    <div className={`relative w-screen h-screen overflow-hidden font-sans transition-colors duration-500 ${
+      isNightModeEffective ? 'bg-black' : 'bg-neutral-950'
+    }`}>
       {/* 1. Live Road Canvas / Camera Preview */}
       <RoadCanvas
         speedKmh={telemetry.speedKmh}
@@ -535,6 +600,7 @@ export default function App() {
         activeSpeedLimitKmh={detectedSpeedLimit.limitKmh}
         batteryLevel={batteryLevel}
         isCharging={isCharging}
+        nightModeEnabled={isNightModeEffective}
         onSignRecognized={handleSignRecognized}
         isRecording={isRecording}
         isDualCameraActive={settings.frontCameraEnabled && entitlements.canUseFrontCamera}
@@ -558,6 +624,10 @@ export default function App() {
         tsrDetectionNotice={tsrDetectionNotice}
         batteryLevel={batteryLevel}
         isCharging={isCharging}
+        nightModeEnabled={isNightModeEffective}
+        nightModePreference={settings.nightModePreference || 'AUTO'}
+        ambientLight={ambientLight}
+        onToggleNightMode={handleToggleNightMode}
         onToggleCharging={handleToggleCharging}
         onToggleRecording={() => setIsRecording(prev => !prev)}
         onToggleSpeedUnit={handleToggleSpeedUnit}
@@ -598,6 +668,8 @@ export default function App() {
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
         settings={settings}
+        ambientLight={ambientLight}
+        onSimulateLux={(lux) => lightSensor.simulateLux(lux)}
         entitlements={entitlements}
         onUpdateSettings={(newSettings) => setSettings(prev => ({ ...prev, ...newSettings }))}
         onTriggerPaywall={() => setShowPaywall(true)}

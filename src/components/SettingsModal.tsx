@@ -14,9 +14,20 @@ import {
   Smartphone,
   Bell,
   VolumeX,
-  Eye
+  Eye,
+  Moon,
+  Sun
 } from 'lucide-react';
-import { DashcamSettings, BillingEntitlements, StorageQuotaOption, VideoResolutionOption, SpeedUnitOption, SensitivityOption } from '../types/dashcam';
+import {
+  DashcamSettings,
+  BillingEntitlements,
+  StorageQuotaOption,
+  VideoResolutionOption,
+  SpeedUnitOption,
+  SensitivityOption,
+  NightModePreference,
+  AmbientLightData
+} from '../types/dashcam';
 import { soundAlert } from '../services/soundAlertManager';
 
 interface SettingsModalProps {
@@ -24,6 +35,8 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: DashcamSettings;
   entitlements: BillingEntitlements;
+  ambientLight?: AmbientLightData;
+  onSimulateLux?: (lux: number | null) => void;
   onUpdateSettings: (newSettings: Partial<DashcamSettings>) => void;
   onTriggerPaywall: () => void;
   onToggleSandboxPro: () => void;
@@ -34,6 +47,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   entitlements,
+  ambientLight,
+  onSimulateLux,
   onUpdateSettings,
   onTriggerPaywall,
   onToggleSandboxPro
@@ -464,12 +479,216 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          {/* SECTION 6: IN-CABIN AUDIO RECORDING */}
+          {/* SECTION 6: AMBIENT LIGHT SENSING & NIGHT MODE */}
+          <div className={`rounded-xl p-4 border transition-colors ${
+            settings.nightModeEnabled
+              ? 'bg-amber-950/40 border-amber-500/70 shadow-lg shadow-amber-950/40'
+              : 'bg-neutral-950/60 border-neutral-800'
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Moon className={`w-4 h-4 ${settings.nightModeEnabled ? 'text-amber-400' : 'text-cyan-400'}`} />
+                <h3 className={`text-xs font-bold uppercase tracking-wider ${
+                  settings.nightModeEnabled ? 'text-amber-400' : 'text-cyan-400'
+                }`}>
+                  6. Ambient Light Detection & Night Mode
+                </h3>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                  settings.nightModePreference === 'AUTO'
+                    ? settings.nightModeEnabled
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                    : settings.nightModeEnabled
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+                }`}>
+                  {settings.nightModePreference === 'AUTO'
+                    ? `AUTO (${settings.nightModeEnabled ? 'NIGHT' : 'DAY'})`
+                    : settings.nightModeEnabled ? 'ALWAYS NIGHT' : 'ALWAYS DAY'}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-neutral-400 leading-relaxed mb-3">
+              RydeCam automatically senses ambient lighting using hardware light sensors, camera optical luminance analysis, and solar twilight coordinates to eliminate windshield glare at night and maximize daytime visibility.
+            </p>
+
+            {/* 3-Way Mode Selector */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[
+                {
+                  id: 'AUTO' as NightModePreference,
+                  label: 'Auto Detect',
+                  sub: 'Sensor & Camera',
+                  icon: <Sun className="w-3.5 h-3.5 text-amber-400" />
+                },
+                {
+                  id: 'ALWAYS_OFF' as NightModePreference,
+                  label: 'Always Day',
+                  sub: 'High Brightness',
+                  icon: <Sun className="w-3.5 h-3.5 text-cyan-400" />
+                },
+                {
+                  id: 'ALWAYS_ON' as NightModePreference,
+                  label: 'Always Night',
+                  sub: 'Anti-Glare Amber',
+                  icon: <Moon className="w-3.5 h-3.5 text-amber-400" />
+                }
+              ].map(opt => {
+                const isSelected = (settings.nightModePreference || 'AUTO') === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      const enabled = opt.id === 'ALWAYS_ON' ? true : opt.id === 'ALWAYS_OFF' ? false : (ambientLight?.isLowLight ?? false);
+                      onUpdateSettings({
+                        nightModePreference: opt.id,
+                        nightModeEnabled: enabled
+                      });
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                      isSelected
+                        ? settings.nightModeEnabled
+                          ? 'bg-amber-950/70 border-amber-400 text-amber-200 shadow-md shadow-amber-950/50'
+                          : 'bg-cyan-950/50 border-cyan-400 text-white shadow-md'
+                        : 'bg-neutral-900/80 border-neutral-800 text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-1">
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        {opt.icon}
+                        <span>{opt.label}</span>
+                      </div>
+                      {isSelected && (
+                        <CheckCircle className={`w-3.5 h-3.5 ${settings.nightModeEnabled ? 'text-amber-400' : 'text-cyan-400'}`} />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-neutral-400">{opt.sub}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Live Illuminance Diagnostic Gauge & Simulator */}
+            <div className={`p-3 rounded-xl border ${
+              settings.nightModeEnabled ? 'bg-black/70 border-amber-900/60' : 'bg-neutral-900/90 border-neutral-800'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-neutral-300">LIVE ILLUMINANCE SENSOR:</span>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
+                    ambientLight?.source === 'SIMULATED'
+                      ? 'bg-purple-950 text-purple-300 border-purple-800'
+                      : ambientLight?.source === 'HARDWARE_SENSOR'
+                      ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                      : ambientLight?.source === 'CAMERA_OPTICAL'
+                      ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                      : 'bg-blue-950 text-blue-300 border-blue-800'
+                  }`}>
+                    {ambientLight?.source ?? 'CAMERA_OPTICAL'}
+                  </span>
+                </div>
+                <div className="font-mono text-xs font-bold flex items-center gap-1.5">
+                  <span className={settings.nightModeEnabled ? 'text-amber-300' : 'text-cyan-300'}>
+                    {Math.round(ambientLight?.lux ?? 0)} LUX
+                  </span>
+                  <span className="text-[10px] text-neutral-500 font-normal">
+                    (Threshold: {settings.autoNightLuxThreshold || 25} lx)
+                  </span>
+                </div>
+              </div>
+
+              {/* Lux Progress Bar */}
+              <div className="w-full bg-neutral-800 h-2.5 rounded-full overflow-hidden relative mb-2">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    settings.nightModeEnabled
+                      ? 'bg-gradient-to-r from-amber-600 to-amber-400'
+                      : 'bg-gradient-to-r from-cyan-600 to-cyan-400'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(3, ((ambientLight?.lux ?? 0) / 100) * 100))}%` }}
+                />
+                {/* Threshold Marker line at configured threshold */}
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-red-400"
+                  style={{ left: `${Math.min(100, ((settings.autoNightLuxThreshold || 25) / 100) * 100)}%` }}
+                  title={`Trigger Threshold: ${settings.autoNightLuxThreshold || 25} Lux`}
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] text-neutral-500 font-mono mb-3">
+                <span>0 lx (Pitch Dark)</span>
+                <span className="text-red-400 font-bold">▲ Cutoff ({settings.autoNightLuxThreshold || 25} lx)</span>
+                <span>100+ lx (Daylight)</span>
+              </div>
+
+              {/* Threshold adjustment buttons */}
+              <div className="mb-3 pt-2 border-t border-neutral-800/80">
+                <span className="text-[11px] font-bold text-neutral-300 block mb-1.5">
+                  Night Mode Light Sensitivity Cutoff:
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { val: 15, label: '15 Lux', desc: 'Dark night / Unlit tunnel' },
+                    { val: 25, label: '25 Lux', desc: 'Standard dusk / Light tunnel' },
+                    { val: 45, label: '45 Lux', desc: 'Overcast / Early twilight' }
+                  ].map(lvl => (
+                    <button
+                      key={lvl.val}
+                      type="button"
+                      onClick={() => onUpdateSettings({ autoNightLuxThreshold: lvl.val })}
+                      className={`p-2 rounded-lg text-left transition border ${
+                        (settings.autoNightLuxThreshold || 25) === lvl.val
+                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500 shadow-sm'
+                          : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                      }`}
+                    >
+                      <div className="font-mono text-xs font-bold">{lvl.label}</div>
+                      <div className="text-[9px] text-neutral-500">{lvl.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Instant Simulation Testing Triggers */}
+              <div className="pt-2 border-t border-neutral-800/80 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[10px] font-mono text-neutral-400">Light Simulator Test:</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onSimulateLux?.(8)}
+                    className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-amber-300 text-[10px] font-mono border border-neutral-700 transition"
+                  >
+                    Tunnel (8 Lux) 🚇
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSimulateLux?.(450)}
+                    className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-cyan-300 text-[10px] font-mono border border-neutral-700 transition"
+                  >
+                    Sunlight (450 Lux) ☀️
+                  </button>
+                  {ambientLight?.source === 'SIMULATED' && (
+                    <button
+                      type="button"
+                      onClick={() => onSimulateLux?.(null)}
+                      className="px-2 py-1 rounded bg-red-950/80 hover:bg-red-900 text-red-200 text-[10px] font-mono border border-red-800 transition"
+                    >
+                      Reset Sensor ↺
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 7: IN-CABIN AUDIO RECORDING */}
           <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3.5 flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
                 <Volume2 className="w-4 h-4 text-cyan-400" />
-                <span className="text-sm font-bold text-white">Record Cabin Audio</span>
+                <span className="text-sm font-bold text-white">7. Record Cabin Audio</span>
               </div>
               <p className="text-xs text-neutral-400 mt-0.5">
                 Microphone permission requested only when enabled. Disabled by default for privacy.

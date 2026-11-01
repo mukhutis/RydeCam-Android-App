@@ -25,9 +25,19 @@ import {
   Volume2,
   VolumeX,
   Eye,
-  AlertTriangle
+  AlertTriangle,
+  Moon,
+  Sun
 } from 'lucide-react';
-import { StorageStats, TelemetryData, VideoResolutionOption, SpeedUnitOption, SpeedLimitSign } from '../types/dashcam';
+import {
+  StorageStats,
+  TelemetryData,
+  VideoResolutionOption,
+  SpeedUnitOption,
+  SpeedLimitSign,
+  NightModePreference,
+  AmbientLightData
+} from '../types/dashcam';
 
 /**
  * Properties for the primary automotive Heads-Up Display (DashcamHUD) overlay.
@@ -65,6 +75,14 @@ export interface DashcamHUDProps {
   batteryLevel?: number;
   /** Indicates if the device is plugged into 12V automotive power / charging */
   isCharging?: boolean;
+  /** Toggles night mode palette (high-contrast amber/red tones with lowered UI brightness) */
+  nightModeEnabled?: boolean;
+  /** Active night mode preference policy ('AUTO' | 'ALWAYS_ON' | 'ALWAYS_OFF') */
+  nightModePreference?: NightModePreference;
+  /** Real-time ambient illuminance and sensor diagnostic status */
+  ambientLight?: AmbientLightData;
+  /** Callback to toggle night mode directly from the cockpit HUD */
+  onToggleNightMode?: () => void;
   /** Callback to toggle between 12V automotive power and internal battery backup */
   onToggleCharging?: () => void;
   /** Callback to toggle recording state (triggers guard dialog if recording is stopped) */
@@ -120,6 +138,10 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
   tsrDetectionNotice,
   batteryLevel = 94,
   isCharging = true,
+  nightModeEnabled = false,
+  nightModePreference = 'AUTO',
+  ambientLight,
+  onToggleNightMode,
   onToggleCharging,
   onToggleRecording,
   onToggleSpeedUnit,
@@ -159,24 +181,42 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
   const usagePercent = Math.min(100, Math.round((storageStats.usedBytes / storageStats.quotaBytes) * 100));
 
   return (
-    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between z-10 p-3 select-none">
+    <div className={`absolute inset-0 pointer-events-none flex flex-col justify-between z-10 p-3 select-none transition-all duration-300 ${
+      nightModeEnabled ? 'filter brightness-[0.84] contrast-[1.08]' : ''
+    }`}>
 
       {/* 1. TOP STATUS BAR */}
-      <div className="pointer-events-auto bg-neutral-950/85 backdrop-blur-md rounded-xl p-3 border border-neutral-800/80 shadow-2xl">
+      <div className={`pointer-events-auto backdrop-blur-md rounded-xl p-3 border shadow-2xl transition-colors duration-300 ${
+        nightModeEnabled
+          ? 'bg-black/94 border-amber-950/80 shadow-amber-950/20'
+          : 'bg-neutral-950/85 border-neutral-800/80'
+      }`}>
         <div className="flex items-center justify-between gap-2">
 
           {/* Left: RydeCam Brand Title, REC Indicator & Elapsed Timer */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 pr-3 border-r border-neutral-800">
-              <div className="w-7 h-7 rounded-lg bg-red-600/20 border border-red-500/50 flex items-center justify-center">
+            <div className={`flex items-center gap-2 pr-3 border-r ${
+              nightModeEnabled ? 'border-amber-950/80' : 'border-neutral-800'
+            }`}>
+              <div className={`w-7 h-7 rounded-lg border flex items-center justify-center ${
+                nightModeEnabled ? 'bg-red-950/60 border-red-700/60' : 'bg-red-600/20 border-red-500/50'
+              }`}>
                 <Video className="w-4 h-4 text-red-500" />
               </div>
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5 leading-none">
-                  <span className="font-black text-sm tracking-wider text-white">RYDECAM</span>
-                  <span className="text-[9px] bg-red-950 text-red-300 border border-red-800 px-1 py-0.5 rounded font-mono font-bold leading-none">PRO</span>
+                  <span className={`font-black text-sm tracking-wider ${
+                    nightModeEnabled ? 'text-amber-100' : 'text-white'
+                  }`}>RYDECAM</span>
+                  <span className={`text-[9px] px-1 py-0.5 rounded font-mono font-bold leading-none border ${
+                    nightModeEnabled
+                      ? 'bg-red-950 text-red-400 border-red-900'
+                      : 'bg-red-950 text-red-300 border-red-800'
+                  }`}>PRO</span>
                 </div>
-                <span className="text-[9px] text-neutral-400 font-mono leading-none mt-0.5">com.rydecam.app</span>
+                <span className={`text-[9px] font-mono leading-none mt-0.5 ${
+                  nightModeEnabled ? 'text-amber-200/60' : 'text-neutral-400'
+                }`}>com.rydecam.app</span>
               </div>
             </div>
 
@@ -190,24 +230,60 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
               />
               <span
                 className={`text-xs font-black tracking-widest ${
-                  isRecording ? 'text-red-400' : 'text-neutral-400'
+                  isRecording
+                    ? nightModeEnabled ? 'text-red-400' : 'text-red-400'
+                    : nightModeEnabled ? 'text-amber-200/50' : 'text-neutral-400'
                 }`}
               >
                 {isRecording ? 'REC' : 'STANDBY'}
               </span>
             </div>
-            <div className="font-mono text-sm font-bold text-white bg-neutral-900/90 px-2.5 py-0.5 rounded border border-neutral-700/60">
+            <div className={`font-mono text-sm font-bold px-2.5 py-0.5 rounded border ${
+              nightModeEnabled
+                ? 'text-amber-200 bg-neutral-950 border-amber-900/60'
+                : 'text-white bg-neutral-900/90 border-neutral-700/60'
+            }`}>
               {formatTimer(recordingElapsedSec)}
             </div>
           </div>
 
-          {/* Center-Right Badges: Resolution, Mic, Battery, Temp */}
+          {/* Center-Right Badges: Night Mode Toggle, Resolution, Mic, Battery, Temp */}
           <div className="flex items-center gap-2">
+            {/* Quick Night Mode Anti-Glare & Auto Light Sensing Toggle */}
+            <button
+              onClick={onToggleNightMode}
+              className={`flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded border transition-colors cursor-pointer select-none ${
+                nightModeEnabled
+                  ? 'bg-amber-950/80 text-amber-300 border-amber-500/60 hover:bg-amber-900 shadow-sm'
+                  : 'bg-neutral-900/90 text-neutral-400 border-neutral-700/60 hover:text-neutral-200'
+              }`}
+              title={
+                nightModePreference === 'AUTO'
+                  ? `Auto Light Sensing: ${Math.round(ambientLight?.lux ?? 0)} Lux (${nightModeEnabled ? 'Night' : 'Day'} Mode Active). Click to cycle: Auto -> Manual Night -> Manual Day.`
+                  : nightModeEnabled
+                  ? 'Manual Night Mode (Locked). Click to switch to Manual Day.'
+                  : 'Manual Day Mode (Locked). Click to switch to Auto Sensing.'
+              }
+            >
+              {nightModeEnabled ? (
+                <Moon className="w-3.5 h-3.5 text-amber-400" />
+              ) : (
+                <Sun className="w-3.5 h-3.5 text-neutral-400" />
+              )}
+              <span className="font-mono font-bold text-[10px] hidden sm:inline">
+                {nightModePreference === 'AUTO'
+                  ? `${nightModeEnabled ? 'AUTO NIGHT' : 'AUTO DAY'} • ${Math.round(ambientLight?.lux ?? 0)}LX`
+                  : nightModeEnabled ? 'NIGHT' : 'DAY'}
+              </span>
+            </button>
+
             <span
               className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border ${
-                resolution === '4K'
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                  : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                nightModeEnabled
+                  ? 'bg-amber-950/70 text-amber-300 border-amber-700/50'
+                  : resolution === '4K'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
               }`}
             >
               {resolution} 30FPS
@@ -216,7 +292,9 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
             <div
               className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border ${
                 isAudioEnabled
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  ? nightModeEnabled
+                    ? 'bg-amber-950/70 text-amber-300 border-amber-600/50'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-neutral-800 text-neutral-400 border-neutral-700'
               }`}
               title={isAudioEnabled ? 'Audio Recording ON' : 'Audio Muted'}
@@ -230,12 +308,16 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
               onClick={onToggleCharging}
               className={`flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded border transition-colors cursor-pointer select-none ${
                 isCharging
-                  ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300 hover:bg-emerald-950'
+                  ? nightModeEnabled
+                    ? 'bg-amber-950/80 border-amber-500/60 text-amber-300 hover:bg-amber-900'
+                    : 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300 hover:bg-emerald-950'
                   : batteryLevel <= 20
                     ? 'bg-red-950/80 border-red-500/80 text-red-300 animate-pulse'
                     : batteryLevel <= 40
                       ? 'bg-amber-950/70 border-amber-500/60 text-amber-300'
-                      : 'bg-neutral-900/90 border-neutral-700/60 text-neutral-300 hover:bg-neutral-800'
+                      : nightModeEnabled
+                        ? 'bg-neutral-900/90 border-amber-900/50 text-amber-200/90 hover:bg-neutral-850'
+                        : 'bg-neutral-900/90 border-neutral-700/60 text-neutral-300 hover:bg-neutral-800'
               }`}
               title={
                 isCharging
@@ -245,7 +327,7 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
             >
               {isCharging ? (
                 <div className="relative flex items-center">
-                  <BatteryCharging className="w-3.5 h-3.5 text-emerald-400" />
+                  <BatteryCharging className={`w-3.5 h-3.5 ${nightModeEnabled ? 'text-amber-400' : 'text-emerald-400'}`} />
                   <Zap className="w-2.5 h-2.5 text-amber-300 fill-amber-300 absolute -top-1 -right-1 animate-pulse" />
                 </div>
               ) : batteryLevel <= 20 ? (
@@ -253,15 +335,19 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
               ) : batteryLevel <= 40 ? (
                 <BatteryLow className="w-3.5 h-3.5 text-amber-400" />
               ) : batteryLevel <= 70 ? (
-                <BatteryMedium className="w-3.5 h-3.5 text-neutral-300" />
+                <BatteryMedium className={`w-3.5 h-3.5 ${nightModeEnabled ? 'text-amber-200/80' : 'text-neutral-300'}`} />
               ) : (
-                <BatteryFull className="w-3.5 h-3.5 text-emerald-400" />
+                <BatteryFull className={`w-3.5 h-3.5 ${nightModeEnabled ? 'text-amber-400' : 'text-emerald-400'}`} />
               )}
 
               <span className="font-mono font-bold tracking-tight">{batteryLevel}%</span>
 
               {isCharging ? (
-                <span className="flex items-center gap-0.5 text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1 rounded font-mono font-semibold">
+                <span className={`flex items-center gap-0.5 text-[9px] px-1 rounded font-mono font-semibold border ${
+                  nightModeEnabled
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                }`}>
                   <Zap className="w-2.5 h-2.5 fill-current" />
                   <span>CHG</span>
                 </span>
@@ -272,30 +358,46 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
               )}
             </div>
 
-            <div className="hidden md:flex items-center gap-1 text-[11px] text-neutral-300 bg-neutral-900/90 px-2 py-0.5 rounded border border-neutral-700/60">
-              <Thermometer className="w-3.5 h-3.5 text-cyan-400" />
+            <div className={`hidden md:flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border ${
+              nightModeEnabled
+                ? 'text-amber-200/90 bg-neutral-950 border-amber-900/50'
+                : 'text-neutral-300 bg-neutral-900/90 border-neutral-700/60'
+            }`}>
+              <Thermometer className={`w-3.5 h-3.5 ${nightModeEnabled ? 'text-amber-400' : 'text-cyan-400'}`} />
               <span className="font-mono">36°C NORMAL</span>
             </div>
           </div>
         </div>
 
         {/* Storage Bar & FIFO Progress */}
-        <div className="mt-2.5 pt-2 border-t border-neutral-800/80">
+        <div className={`mt-2.5 pt-2 border-t ${nightModeEnabled ? 'border-amber-950/80' : 'border-neutral-800/80'}`}>
           <div className="flex items-center justify-between text-[11px] text-neutral-300 font-mono mb-1">
             <div className="flex items-center gap-1.5">
-              <span className="text-neutral-400">STORAGE:</span>
-              <span className="font-bold text-white">{usedGb} / {quotaGb} GB</span>
-              <span className="text-[10px] text-cyan-400 bg-cyan-950/70 px-1 rounded border border-cyan-800/60 font-sans">FIFO AUTO-ROTATE</span>
+              <span className={nightModeEnabled ? 'text-amber-200/70' : 'text-neutral-400'}>STORAGE:</span>
+              <span className={`font-bold ${nightModeEnabled ? 'text-amber-200' : 'text-white'}`}>{usedGb} / {quotaGb} GB</span>
+              <span className={`text-[10px] px-1 rounded border font-sans ${
+                nightModeEnabled
+                  ? 'text-amber-300 bg-amber-950/80 border-amber-700/60'
+                  : 'text-cyan-400 bg-cyan-950/70 border-cyan-800/60'
+              }`}>FIFO AUTO-ROTATE</span>
             </div>
-            <div className="text-neutral-400">
-              EST. REMAINING: <span className="text-emerald-300 font-bold">~{Math.floor(remainingMin / 60)}h {remainingMin % 60}m</span>
+            <div className={nightModeEnabled ? 'text-amber-200/70' : 'text-neutral-400'}>
+              EST. REMAINING: <span className={`font-bold ${
+                nightModeEnabled ? 'text-amber-300' : 'text-emerald-300'
+              }`}>~{Math.floor(remainingMin / 60)}h {remainingMin % 60}m</span>
             </div>
           </div>
 
-          <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden flex">
+          <div className={`w-full h-1.5 rounded-full overflow-hidden flex ${
+            nightModeEnabled ? 'bg-amber-950/60' : 'bg-neutral-800'
+          }`}>
             <div
               className={`h-full transition-all duration-500 ${
-                usagePercent > 90 ? 'bg-amber-500' : 'bg-cyan-500'
+                usagePercent > 90
+                  ? 'bg-red-500'
+                  : nightModeEnabled
+                    ? 'bg-amber-500'
+                    : 'bg-cyan-500'
               }`}
               style={{ width: `${usagePercent}%` }}
             />
@@ -360,7 +462,9 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
               className={`font-mono text-7xl sm:text-8xl md:text-9xl font-black tracking-tighter transition-colors duration-300 ${
                 isOverSpeed
                   ? 'text-red-500 drop-shadow-[0_4px_30px_rgba(239,68,68,0.7)] animate-pulse'
-                  : 'text-emerald-400 drop-shadow-[0_4px_24px_rgba(16,185,129,0.35)]'
+                  : nightModeEnabled
+                    ? 'text-amber-400 drop-shadow-[0_4px_24px_rgba(245,158,11,0.4)]'
+                    : 'text-emerald-400 drop-shadow-[0_4px_24px_rgba(16,185,129,0.35)]'
               }`}
             >
               {displaySpeed}
@@ -370,10 +474,18 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
               className="pointer-events-auto ml-2 flex items-center gap-1 group transition"
               title={`Click to switch between km/hr and m/hr (Currently ${speedUnitLabel})`}
             >
-              <span className="text-xl sm:text-2xl font-black text-emerald-300/90 group-hover:text-emerald-200 tracking-wider font-mono">
+              <span className={`text-xl sm:text-2xl font-black tracking-wider font-mono transition-colors ${
+                nightModeEnabled
+                  ? 'text-amber-300/90 group-hover:text-amber-200'
+                  : 'text-emerald-300/90 group-hover:text-emerald-200'
+              }`}>
                 {speedUnitLabel}
               </span>
-              <span className="text-[10px] text-emerald-400 bg-emerald-950/80 group-hover:bg-emerald-900 border border-emerald-700/60 px-1.5 py-0.5 rounded font-mono font-bold tracking-tight">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold tracking-tight border transition-colors ${
+                nightModeEnabled
+                  ? 'text-amber-300 bg-amber-950/80 group-hover:bg-amber-900 border-amber-700/60'
+                  : 'text-emerald-400 bg-emerald-950/80 group-hover:bg-emerald-900 border-emerald-700/60'
+              }`}>
                 ⇄
               </span>
             </button>
@@ -387,7 +499,9 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
                 className={`relative w-15 h-15 sm:w-18 sm:h-18 rounded-full border-4 bg-white flex flex-col items-center justify-center shadow-2xl transition hover:scale-105 active:scale-95 cursor-pointer ${
                   isOverSpeed
                     ? 'border-red-600 ring-4 ring-red-500/70 animate-bounce'
-                    : 'border-red-600 ring-2 ring-black/40'
+                    : nightModeEnabled
+                      ? 'border-red-600 ring-2 ring-amber-500/50'
+                      : 'border-red-600 ring-2 ring-black/40'
                 }`}
                 title="TSR Optical Speed Limit Sign (Click to cycle speed limit)"
               >
@@ -401,9 +515,15 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
                   {speedUnitLabel}
                 </span>
               </button>
-              <div className="flex items-center gap-1 mt-1 bg-black/80 backdrop-blur-sm px-2 py-0.5 rounded-full border border-neutral-700/80">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                <span className="text-[9px] font-mono text-cyan-300 font-bold">TSR AI</span>
+              <div className={`flex items-center gap-1 mt-1 backdrop-blur-sm px-2 py-0.5 rounded-full border ${
+                nightModeEnabled ? 'bg-black/90 border-amber-800/80' : 'bg-black/80 border-neutral-700/80'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                  nightModeEnabled ? 'bg-amber-400' : 'bg-cyan-400'
+                }`}></span>
+                <span className={`text-[9px] font-mono font-bold ${
+                  nightModeEnabled ? 'text-amber-300' : 'text-cyan-300'
+                }`}>TSR AI</span>
               </div>
             </div>
           )}
@@ -411,16 +531,24 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
 
         {/* Trip Distance Odometer bar */}
         <div className="flex items-center justify-center gap-2 mt-0.5 mb-1.5">
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-950/80 backdrop-blur-md border border-neutral-800/90 pointer-events-auto shadow-lg">
-            <Navigation className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span className="text-[11px] font-mono text-neutral-400">TRIP DISTANCE:</span>
-            <span className="text-xs font-mono font-bold text-white tracking-wide">
+          <div className={`flex items-center gap-2 px-3 py-1 rounded-full backdrop-blur-md border pointer-events-auto shadow-lg transition-colors ${
+            nightModeEnabled
+              ? 'bg-black/90 border-amber-900/70 text-amber-200'
+              : 'bg-neutral-950/80 border-neutral-800/90 text-white'
+          }`}>
+            <Navigation className={`w-3.5 h-3.5 shrink-0 ${nightModeEnabled ? 'text-amber-400' : 'text-cyan-400'}`} />
+            <span className={`text-[11px] font-mono ${nightModeEnabled ? 'text-amber-200/70' : 'text-neutral-400'}`}>TRIP DISTANCE:</span>
+            <span className={`text-xs font-mono font-bold tracking-wide ${nightModeEnabled ? 'text-amber-200' : 'text-white'}`}>
               {displayDistance} {distanceUnitLabel}
             </span>
             <button
               onClick={onResetTrip}
               title="Reset trip odometer"
-              className="text-[9px] text-neutral-400 hover:text-white font-mono font-semibold px-1.5 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 transition"
+              className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded border transition ${
+                nightModeEnabled
+                  ? 'text-amber-300 bg-amber-950/60 hover:bg-amber-900 border-amber-800/80'
+                  : 'text-neutral-400 hover:text-white bg-neutral-800 hover:bg-neutral-700 border-neutral-700'
+              }`}
             >
               RESET
             </button>
@@ -428,7 +556,11 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
 
           <button
             onClick={onToggleSpeedUnit}
-            className="pointer-events-auto px-2.5 py-1 rounded-full bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-700 text-cyan-400 hover:text-cyan-300 text-[11px] font-mono font-bold flex items-center gap-1 transition shadow-lg"
+            className={`pointer-events-auto px-2.5 py-1 rounded-full border text-[11px] font-mono font-bold flex items-center gap-1 transition shadow-lg ${
+              nightModeEnabled
+                ? 'bg-black/90 hover:bg-neutral-900 border-amber-800/70 text-amber-300 hover:text-amber-200'
+                : 'bg-neutral-900/90 hover:bg-neutral-800 border-neutral-700 text-cyan-400 hover:text-cyan-300'
+            }`}
             title="Toggle between km/hr and m/hr"
           >
             <span>Unit: {speedUnitLabel}</span>
@@ -436,51 +568,94 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
         </div>
 
         {/* GPS coordinates & G-Meter */}
-        <div className="flex flex-wrap items-center justify-center gap-4 mt-1 bg-neutral-950/70 backdrop-blur-md px-4 py-1.5 rounded-full border border-neutral-800/80">
+        <div className={`flex flex-wrap items-center justify-center gap-4 mt-1 backdrop-blur-md px-4 py-1.5 rounded-full border transition-colors ${
+          nightModeEnabled
+            ? 'bg-black/85 border-amber-900/60'
+            : 'bg-neutral-950/70 border-neutral-800/80'
+        }`}>
           <div className="flex items-center gap-1.5">
             <span
               className={`w-2 h-2 rounded-full ${
                 telemetry.isGpsLocked && !telemetry.isSignalStale
-                  ? 'bg-emerald-400 animate-pulse'
+                  ? nightModeEnabled ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400 animate-pulse'
                   : 'bg-red-500'
               }`}
             />
-            <span className="text-[11px] font-mono font-semibold text-neutral-300">
+            <span className={`text-[11px] font-mono font-semibold ${
+              nightModeEnabled ? 'text-amber-200/90' : 'text-neutral-300'
+            }`}>
               {telemetry.isGpsLocked && !telemetry.isSignalStale ? 'GPS LOCKED' : 'SEARCHING GPS'}
             </span>
           </div>
 
-          <div className="text-[11px] font-mono text-neutral-400 hidden sm:inline">
+          <div className={`text-[11px] font-mono hidden sm:inline ${
+            nightModeEnabled ? 'text-amber-200/60' : 'text-neutral-400'
+          }`}>
             LAT: {telemetry.latitude.toFixed(4)}° • LNG: {telemetry.longitude.toFixed(4)}°
           </div>
 
           <div className="flex items-center gap-1 text-[11px] font-mono">
-            <Activity className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-neutral-400">G-FORCE:</span>
+            <Activity className={`w-3.5 h-3.5 ${nightModeEnabled ? 'text-amber-400' : 'text-cyan-400'}`} />
+            <span className={nightModeEnabled ? 'text-amber-200/60' : 'text-neutral-400'}>G-FORCE:</span>
             <span
               className={`font-bold ${
-                currentGForce > 2.0 ? 'text-amber-400 animate-pulse' : 'text-cyan-300'
+                currentGForce > 2.0
+                  ? 'text-red-400 animate-pulse'
+                  : nightModeEnabled
+                    ? 'text-amber-300'
+                    : 'text-cyan-300'
               }`}
             >
               {currentGForce.toFixed(2)} G
             </span>
           </div>
+
+          <div className="flex items-center gap-1 text-[11px] font-mono">
+            <Sun className={`w-3.5 h-3.5 ${ambientLight?.isLowLight ? (nightModeEnabled ? 'text-amber-400' : 'text-neutral-400') : (nightModeEnabled ? 'text-amber-300' : 'text-amber-400')}`} />
+            <span className={nightModeEnabled ? 'text-amber-200/60' : 'text-neutral-400'}>LIGHT:</span>
+            <span
+              className={`font-bold ${
+                nightModeEnabled ? 'text-amber-300' : 'text-cyan-300'
+              }`}
+            >
+              {Math.round(ambientLight?.lux ?? 0)} LX
+            </span>
+            {nightModePreference === 'AUTO' && (
+              <span className={`text-[8px] font-bold px-1 py-0.2 rounded border ${
+                nightModeEnabled
+                  ? 'bg-amber-950/80 text-amber-300 border-amber-800/80'
+                  : 'bg-neutral-800 text-neutral-300 border-neutral-700'
+              }`}>
+                AUTO
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Sensor Shock Simulation Quick Bar */}
         <div className="pointer-events-auto mt-4 flex flex-wrap items-center justify-center gap-2">
-          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest hidden md:inline">
+          <span className={`text-[10px] font-bold uppercase tracking-widest hidden md:inline ${
+            nightModeEnabled ? 'text-amber-200/60' : 'text-neutral-400'
+          }`}>
             TEST SENSORS:
           </span>
           <button
             onClick={() => onSimulateShock(1.2, 'Speed Bump / Pothole (1.2G - Filtered)')}
-            className="text-[10px] font-semibold bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded border border-neutral-700 transition"
+            className={`text-[10px] font-semibold px-2.5 py-1 rounded border transition ${
+              nightModeEnabled
+                ? 'bg-neutral-950 hover:bg-neutral-900 text-amber-200/80 border-amber-900/50'
+                : 'bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 border-neutral-700'
+            }`}
           >
             Pothole (1.2G)
           </button>
           <button
             onClick={() => onSimulateShock(2.0, 'Hard Emergency Braking (2.0G)')}
-            className="text-[10px] font-semibold bg-amber-950/80 hover:bg-amber-900 text-amber-200 px-2.5 py-1 rounded border border-amber-700/80 transition"
+            className={`text-[10px] font-semibold px-2.5 py-1 rounded border transition ${
+              nightModeEnabled
+                ? 'bg-amber-950/80 hover:bg-amber-900 text-amber-200 border-amber-600/70'
+                : 'bg-amber-950/80 hover:bg-amber-900 text-amber-200 border-amber-700/80'
+            }`}
           >
             Hard Brake (2.0G)
           </button>
@@ -495,20 +670,28 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
       </div>
 
       {/* 3. BOTTOM AUTOMOTIVE DOCK */}
-      <div className="pointer-events-auto bg-neutral-950/90 backdrop-blur-md rounded-2xl p-3 border border-neutral-800 shadow-2xl flex flex-col gap-2">
+      <div className={`pointer-events-auto backdrop-blur-md rounded-2xl p-3 border shadow-2xl flex flex-col gap-2 transition-colors ${
+        nightModeEnabled
+          ? 'bg-black/94 border-amber-950/80 shadow-amber-950/30'
+          : 'bg-neutral-950/90 border-neutral-800'
+      }`}>
         <div className="flex items-center justify-around gap-2 max-w-2xl mx-auto w-full">
 
           {/* Navigation Companion Button */}
           <button
             onClick={onOpenNavCompanion}
-            className="flex flex-col items-center justify-center gap-1 w-14 h-14 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700/80 text-cyan-400 transition"
+            className={`flex flex-col items-center justify-center gap-1 w-14 h-14 rounded-xl border transition ${
+              nightModeEnabled
+                ? 'bg-neutral-950 hover:bg-neutral-900 border-amber-900/60 text-amber-400 hover:text-amber-300'
+                : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-700/80 text-cyan-400'
+            }`}
             title="Companion Navigation & Split Screen"
           >
             <Map className="w-5 h-5" />
             <span className="text-[9px] font-bold tracking-wider">NAV</span>
           </button>
 
-          {/* Manual Incident Lock Button (Yellow Shield) */}
+          {/* Manual Incident Lock Button (Yellow/Amber Shield) */}
           <button
             onClick={onTriggerManualLock}
             className="flex flex-col items-center justify-center gap-1 w-14 h-14 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/60 text-amber-300 transition shadow-lg shadow-amber-500/20 active:scale-95"
@@ -530,7 +713,9 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
             className={`w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 active:scale-90 ${
               isRecording
                 ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/50 ring-4 ring-red-600/30'
-                : 'bg-emerald-500 hover:bg-emerald-400 text-neutral-950 shadow-emerald-500/50 ring-4 ring-emerald-500/30'
+                : nightModeEnabled
+                  ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-amber-500/50 ring-4 ring-amber-500/30'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-neutral-950 shadow-emerald-500/50 ring-4 ring-emerald-500/30'
             }`}
             title={isRecording ? 'Stop Recording' : 'Start Continuous Recording'}
           >
@@ -544,17 +729,25 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
           {/* Library / Archive Button */}
           <button
             onClick={onOpenLibrary}
-            className="flex flex-col items-center justify-center gap-1 w-14 h-14 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700/80 text-neutral-200 transition"
+            className={`flex flex-col items-center justify-center gap-1 w-14 h-14 rounded-xl border transition ${
+              nightModeEnabled
+                ? 'bg-neutral-950 hover:bg-neutral-900 border-amber-900/50 text-amber-200/80 hover:text-amber-100'
+                : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-700/80 text-neutral-200'
+            }`}
             title="Saved Clips & Protected Incidents"
           >
-            <FolderOpen className="w-5 h-5 text-neutral-300" />
+            <FolderOpen className={`w-5 h-5 ${nightModeEnabled ? 'text-amber-300/80' : 'text-neutral-300'}`} />
             <span className="text-[9px] font-bold tracking-wider">CLIPS</span>
           </button>
 
           {/* Settings / Setup Button */}
           <button
             onClick={onOpenSettings}
-            className="flex flex-col items-center justify-center gap-1 w-14 h-14 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700/80 text-neutral-300 transition"
+            className={`flex flex-col items-center justify-center gap-1 w-14 h-14 rounded-xl border transition ${
+              nightModeEnabled
+                ? 'bg-neutral-950 hover:bg-neutral-900 border-amber-900/50 text-amber-200/80 hover:text-amber-100'
+                : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-700/80 text-neutral-300'
+            }`}
             title="Dashcam Configuration & Quotas"
           >
             <Settings className="w-5 h-5" />
@@ -563,10 +756,16 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
         </div>
 
         {/* Secondary Utility Dock: Android Code Explorer & Verification Test Runner */}
-        <div className="flex items-center justify-center gap-3 pt-1 border-t border-neutral-800/60 text-xs">
+        <div className={`flex items-center justify-center gap-3 pt-1 border-t text-xs ${
+          nightModeEnabled ? 'border-amber-950/60' : 'border-neutral-800/60'
+        }`}>
           <button
             onClick={onOpenProjectExplorer}
-            className="flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 font-semibold px-3 py-1 rounded bg-neutral-900/60 hover:bg-neutral-900 border border-neutral-700/50 transition"
+            className={`flex items-center gap-1.5 font-semibold px-3 py-1 rounded border transition ${
+              nightModeEnabled
+                ? 'text-amber-400 hover:text-amber-300 bg-neutral-950 hover:bg-neutral-900 border-amber-900/50'
+                : 'text-cyan-400 hover:text-cyan-300 bg-neutral-900/60 hover:bg-neutral-900 border-neutral-700/50'
+            }`}
           >
             <Layers className="w-3.5 h-3.5" />
             <span>Android Studio Code & ZIP</span>
@@ -574,7 +773,11 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
 
           <button
             onClick={onOpenTestRunner}
-            className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 font-semibold px-3 py-1 rounded bg-neutral-900/60 hover:bg-neutral-900 border border-neutral-700/50 transition"
+            className={`flex items-center gap-1.5 font-semibold px-3 py-1 rounded border transition ${
+              nightModeEnabled
+                ? 'text-amber-400 hover:text-amber-300 bg-neutral-950 hover:bg-neutral-900 border-amber-900/50'
+                : 'text-emerald-400 hover:text-emerald-300 bg-neutral-900/60 hover:bg-neutral-900 border-neutral-700/50'
+            }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>Run FIFO & Buffer Tests</span>

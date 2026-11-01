@@ -85,6 +85,36 @@ export interface DashcamSettings {
   speedLimitBeepEnabled: boolean;
   /** Overspeed threshold tolerance in speed units before triggering audible alert (e.g. 5 km/h or mph) */
   speedLimitTolerance: number;
+  /** Lowers UI brightness and shifts palette to high-contrast amber/red tones to preserve night vision and eliminate driver glare */
+  nightModeEnabled: boolean;
+  /** Ambient light automatic switching policy ('AUTO' | 'ALWAYS_ON' | 'ALWAYS_OFF') */
+  nightModePreference: NightModePreference;
+  /** Illuminance threshold in lux to trigger automatic night mode (standard: 25 lux) */
+  autoNightLuxThreshold: number;
+}
+
+/**
+ * Operating mode policy for cockpit display luminance and night mode palette.
+ * - `AUTO`: Automatically switches based on ambient light sensor, camera optical luminance, or solar ephemeris.
+ * - `ALWAYS_ON`: Forced high-contrast amber/red anti-glare mode.
+ * - `ALWAYS_OFF`: Forced standard daylight mode.
+ */
+export type NightModePreference = 'AUTO' | 'ALWAYS_ON' | 'ALWAYS_OFF';
+
+/**
+ * Ambient illuminance telemetry and light sensor diagnostic snapshot.
+ */
+export interface AmbientLightData {
+  /** Measured or estimated ambient illuminance in lux (0 - 1000+) */
+  lux: number;
+  /** Active sensing source */
+  source: 'HARDWARE_SENSOR' | 'CAMERA_OPTICAL' | 'SOLAR_TIME' | 'SIMULATED';
+  /** True if ambient light is currently below the low-light threshold */
+  isLowLight: boolean;
+  /** Active switching threshold in lux */
+  thresholdLux: number;
+  /** Timestamp of the last sensor reading in milliseconds */
+  timestampMillis: number;
 }
 
 /**

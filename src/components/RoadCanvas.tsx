@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, RefreshCw, AlertCircle, Video } from 'lucide-react';
 import { SpeedUnitOption } from '../types/dashcam';
+import { lightSensor } from '../services/lightSensorManager';
 
 /**
  * Properties for the RoadCanvas dynamic camera preview and video stream renderer.
@@ -22,6 +23,8 @@ export interface RoadCanvasProps {
   batteryLevel?: number;
   /** Power status flag indicating if device is plugged into 12V automotive power */
   isCharging?: boolean;
+  /** Toggles night mode palette (high-contrast amber/red tones with lowered UI brightness) */
+  nightModeEnabled?: boolean;
   /** Callback fired when an optical road sign crosses the detection horizon */
   onSignRecognized?: (limitKmh: number, limitMph: number) => void;
   /** Callback fired if physical webcam access fails or is denied */
@@ -48,6 +51,7 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
   activeSpeedLimitKmh,
   batteryLevel = 94,
   isCharging = true,
+  nightModeEnabled = false,
   onSignRecognized,
   onWebcamError
 }) => {
@@ -131,6 +135,19 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
     }
   };
 
+  // Periodic Optical Luminance sampling (Tier 2 sensing: active webcam stream or road canvas)
+  useEffect(() => {
+    const opticalInterval = window.setInterval(() => {
+      if (useRealCamera && videoRef.current && videoRef.current.readyState >= 2) {
+        lightSensor.sampleOpticalLuminance(videoRef.current);
+      } else if (canvasRef.current) {
+        lightSensor.sampleOpticalLuminance(canvasRef.current);
+      }
+    }, 1500);
+
+    return () => clearInterval(opticalInterval);
+  }, [useRealCamera]);
+
   // Highway canvas animation
   useEffect(() => {
     if (useRealCamera) return;
@@ -152,16 +169,22 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       const speedFactor = Math.max(0.1, speedKmh / 70);
       roadOffsetRef.current = (roadOffsetRef.current + 0.015 * speedFactor) % 1;
 
-      // 1. Sky & Horizon gradient (Atmospheric twilight / night road)
+      // 1. Sky & Horizon gradient (Atmospheric twilight or pitch black in night mode)
       const skyGrad = ctx.createLinearGradient(0, 0, 0, height * 0.45);
-      skyGrad.addColorStop(0, '#020617'); // Dark navy
-      skyGrad.addColorStop(0.7, '#0f172a');
-      skyGrad.addColorStop(1, '#1e1b4b'); // Horizon purple tint
+      if (nightModeEnabled) {
+        skyGrad.addColorStop(0, '#000000');
+        skyGrad.addColorStop(0.7, '#050508');
+        skyGrad.addColorStop(1, '#0c0a14'); // Very subtle deep purple horizon
+      } else {
+        skyGrad.addColorStop(0, '#020617'); // Dark navy
+        skyGrad.addColorStop(0.7, '#0f172a');
+        skyGrad.addColorStop(1, '#1e1b4b'); // Horizon purple tint
+      }
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, width, height * 0.45);
 
       // Stars/City distant lights
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.fillStyle = nightModeEnabled ? 'rgba(254, 243, 199, 0.25)' : 'rgba(255, 255, 255, 0.4)';
       for (let i = 0; i < 20; i++) {
         const sx = ((i * 137) % width);
         const sy = ((i * 59) % (height * 0.35));
@@ -169,7 +192,7 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       }
 
       // Distant horizon mountain silhouettes
-      ctx.fillStyle = '#090d16';
+      ctx.fillStyle = nightModeEnabled ? '#040406' : '#090d16';
       ctx.beginPath();
       ctx.moveTo(0, height * 0.45);
       ctx.lineTo(width * 0.2, height * 0.41);
@@ -184,9 +207,15 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       const vanishingY = height * 0.45;
 
       const roadGrad = ctx.createLinearGradient(0, vanishingY, 0, height);
-      roadGrad.addColorStop(0, '#1c1917'); // Road asphalt
-      roadGrad.addColorStop(0.5, '#18181b');
-      roadGrad.addColorStop(1, '#09090b');
+      if (nightModeEnabled) {
+        roadGrad.addColorStop(0, '#100e0d');
+        roadGrad.addColorStop(0.5, '#0c0b0a');
+        roadGrad.addColorStop(1, '#050505');
+      } else {
+        roadGrad.addColorStop(0, '#1c1917'); // Road asphalt
+        roadGrad.addColorStop(0.5, '#18181b');
+        roadGrad.addColorStop(1, '#09090b');
+      }
       ctx.fillStyle = roadGrad;
 
       // Road trapezoid
@@ -204,7 +233,7 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       ctx.fill();
 
       // Road grass/barriers
-      ctx.fillStyle = '#041008'; // Left terrain
+      ctx.fillStyle = nightModeEnabled ? '#020603' : '#041008'; // Left terrain
       ctx.beginPath();
       ctx.moveTo(0, vanishingY);
       ctx.lineTo(roadTopLeft, vanishingY);
@@ -220,7 +249,7 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       ctx.fill();
 
       // Guardrails
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.strokeStyle = nightModeEnabled ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255, 255, 255, 0.25)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(roadTopLeft, vanishingY);
@@ -392,9 +421,15 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         vanishingX, height, 50,
         vanishingX, height * 0.65, width * 0.4
       );
-      beamGrad.addColorStop(0, 'rgba(255, 255, 230, 0.18)');
-      beamGrad.addColorStop(0.5, 'rgba(255, 255, 210, 0.08)');
-      beamGrad.addColorStop(1, 'transparent');
+      if (nightModeEnabled) {
+        beamGrad.addColorStop(0, 'rgba(251, 191, 36, 0.16)'); // Warm amber headlight beam
+        beamGrad.addColorStop(0.5, 'rgba(245, 158, 11, 0.07)');
+        beamGrad.addColorStop(1, 'transparent');
+      } else {
+        beamGrad.addColorStop(0, 'rgba(255, 255, 230, 0.18)');
+        beamGrad.addColorStop(0.5, 'rgba(255, 255, 210, 0.08)');
+        beamGrad.addColorStop(1, 'transparent');
+      }
       ctx.fillStyle = beamGrad;
       ctx.fillRect(0, vanishingY, width, height - vanishingY);
 
@@ -404,7 +439,7 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         width / 2, height / 2, width * 0.65
       );
       vignette.addColorStop(0, 'transparent');
-      vignette.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+      vignette.addColorStop(1, nightModeEnabled ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.45)');
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, width, height);
 
@@ -415,9 +450,9 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       const limitTxt = limitVal ? ` • LIMIT: ${limitVal}` : '';
       const batTxt = ` • BAT: ${batteryLevel}%${isCharging ? ' ⚡' : ''}`;
 
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      ctx.fillStyle = nightModeEnabled ? 'rgba(0, 0, 0, 0.82)' : 'rgba(0, 0, 0, 0.65)';
       ctx.fillRect(16, height - 34, Math.min(width - 32, 600), 22);
-      ctx.fillStyle = '#6ee7b7';
+      ctx.fillStyle = nightModeEnabled ? '#f59e0b' : '#6ee7b7'; // High-contrast amber in night mode
       ctx.font = '10px "JetBrains Mono", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
@@ -434,7 +469,7 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [useRealCamera, speedKmh, speedUnit, tripDistanceKm, activeSpeedLimitKmh, onSignRecognized, batteryLevel, isCharging]);
+  }, [useRealCamera, speedKmh, speedUnit, tripDistanceKm, activeSpeedLimitKmh, onSignRecognized, batteryLevel, isCharging, nightModeEnabled]);
 
   // Handle window resizing for sharp canvas
   useEffect(() => {
@@ -516,20 +551,40 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       {/* Real camera Optical TSR scanning reticle & live watermark */}
       {useRealCamera && (
         <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 z-10">
-          <div className="mt-14 self-center px-3 py-1 rounded bg-black/70 border border-cyan-500/60 text-cyan-300 font-mono text-[10px] flex items-center gap-1.5 backdrop-blur-sm">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+          <div className={`mt-14 self-center px-3 py-1 rounded backdrop-blur-sm border font-mono text-[10px] flex items-center gap-1.5 transition-colors ${
+            nightModeEnabled
+              ? 'bg-black/85 border-amber-500/70 text-amber-300'
+              : 'bg-black/70 border-cyan-500/60 text-cyan-300'
+          }`}>
+            <span className={`w-2 h-2 rounded-full animate-ping ${
+              nightModeEnabled ? 'bg-amber-400' : 'bg-cyan-400'
+            }`} />
             <span>OPTICAL TSR SIGN RECOGNITION ACTIVE</span>
           </div>
 
-          <div className="self-center w-64 h-36 border border-cyan-500/30 rounded-xl relative flex items-center justify-center">
-            <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-cyan-400" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-cyan-400" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-cyan-400" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-cyan-400" />
-            <span className="text-[10px] text-cyan-400/70 font-mono">TSR SCAN REGION</span>
+          <div className={`self-center w-64 h-36 border rounded-xl relative flex items-center justify-center transition-colors ${
+            nightModeEnabled ? 'border-amber-500/40' : 'border-cyan-500/30'
+          }`}>
+            <div className={`absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 ${
+              nightModeEnabled ? 'border-amber-400' : 'border-cyan-400'
+            }`} />
+            <div className={`absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 ${
+              nightModeEnabled ? 'border-amber-400' : 'border-cyan-400'
+            }`} />
+            <div className={`absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 ${
+              nightModeEnabled ? 'border-amber-400' : 'border-cyan-400'
+            }`} />
+            <div className={`absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 ${
+              nightModeEnabled ? 'border-amber-400' : 'border-cyan-400'
+            }`} />
+            <span className={`text-[10px] font-mono ${
+              nightModeEnabled ? 'text-amber-400/80' : 'text-cyan-400/70'
+            }`}>TSR SCAN REGION</span>
           </div>
 
-          <div className="bg-black/75 px-3 py-1.5 rounded text-[10px] font-mono text-emerald-400 self-start">
+          <div className={`bg-black/85 px-3 py-1.5 rounded text-[10px] font-mono self-start transition-colors ${
+            nightModeEnabled ? 'text-amber-400' : 'text-emerald-400'
+          }`}>
             RYDECAM LIVE • {speedUnit === 'MPH' ? `${Math.round(speedKmh * 0.621371)} M/HR` : `${Math.round(speedKmh)} KM/HR`} {activeSpeedLimitKmh ? `• LIMIT: ${speedUnit === 'MPH' ? Math.round(activeSpeedLimitKmh * 0.621371) : activeSpeedLimitKmh}` : ''} • BAT: {batteryLevel}% {isCharging ? '⚡ CHG' : ''}
           </div>
         </div>
