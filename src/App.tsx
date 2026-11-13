@@ -1,12 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { RoadCanvas } from './components/RoadCanvas';
 import { DashcamHUD } from './components/DashcamHUD';
-import { GalleryModal } from './components/GalleryModal';
-import { SettingsModal } from './components/SettingsModal';
-import { PaywallModal } from './components/PaywallModal';
-import { CompanionNavModal } from './components/CompanionNavModal';
-import { AndroidProjectExplorer } from './components/AndroidProjectExplorer';
-import { TestRunnerModal } from './components/TestRunnerModal';
 import { webStorage } from './services/storageManager';
 import { soundAlert } from './services/soundAlertManager';
 import { lightSensor } from './services/lightSensorManager';
@@ -20,6 +14,25 @@ import {
   NightModePreference,
   AmbientLightData
 } from './types/dashcam';
+
+const GalleryModal = lazy(() =>
+  import('./components/GalleryModal').then((m) => ({ default: m.GalleryModal }))
+);
+const SettingsModal = lazy(() =>
+  import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal }))
+);
+const PaywallModal = lazy(() =>
+  import('./components/PaywallModal').then((m) => ({ default: m.PaywallModal }))
+);
+const CompanionNavModal = lazy(() =>
+  import('./components/CompanionNavModal').then((m) => ({ default: m.CompanionNavModal }))
+);
+const AndroidProjectExplorer = lazy(() =>
+  import('./components/AndroidProjectExplorer').then((m) => ({ default: m.AndroidProjectExplorer }))
+);
+const TestRunnerModal = lazy(() =>
+  import('./components/TestRunnerModal').then((m) => ({ default: m.TestRunnerModal }))
+);
 
 /**
  * @fileoverview RydeCam Automotive Dashcam Cockpit Root Application.
@@ -667,73 +680,88 @@ export default function App() {
         onOpenTestRunner={() => setShowTestRunner(true)}
       />
 
-      {/* 3. Recording Archive / Library Modal */}
-      <GalleryModal
-        isOpen={showGallery}
-        onClose={() => setShowGallery(false)}
-        clips={clips}
-        storageStats={storageStats}
-        speedUnit={settings.speedUnit}
-        onToggleProtection={(id) => {
-          webStorage.toggleProtection(id);
-          setClips(webStorage.getClips());
-          setStorageStats(webStorage.getStorageStats());
-        }}
-        onDeleteClip={(id) => {
-          webStorage.deleteClip(id);
-          setClips(webStorage.getClips());
-          setStorageStats(webStorage.getStorageStats());
-        }}
-        onAddSimulatedClip={rotateSegment}
-      />
+      {/* Secondary Modals (Code-split via React.lazy for minimal initial bundle size) */}
+      <Suspense fallback={null}>
+        {/* 3. Recording Archive / Library Modal */}
+        {showGallery && (
+          <GalleryModal
+            isOpen={showGallery}
+            onClose={() => setShowGallery(false)}
+            clips={clips}
+            storageStats={storageStats}
+            speedUnit={settings.speedUnit}
+            onToggleProtection={(id) => {
+              webStorage.toggleProtection(id);
+              setClips(webStorage.getClips());
+              setStorageStats(webStorage.getStorageStats());
+            }}
+            onDeleteClip={(id) => {
+              webStorage.deleteClip(id);
+              setClips(webStorage.getClips());
+              setStorageStats(webStorage.getStorageStats());
+            }}
+            onAddSimulatedClip={rotateSegment}
+          />
+        )}
 
-      {/* 4. Configuration & Settings Modal */}
-      <SettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        settings={settings}
-        ambientLight={ambientLight}
-        onSimulateLux={(lux) => lightSensor.simulateLux(lux)}
-        entitlements={entitlements}
-        onUpdateSettings={(newSettings) => setSettings(prev => ({ ...prev, ...newSettings }))}
-        onTriggerPaywall={() => setShowPaywall(true)}
-        onToggleSandboxPro={handleToggleSandboxPro}
-      />
+        {/* 4. Configuration & Settings Modal */}
+        {showSettings && (
+          <SettingsModal
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
+            settings={settings}
+            ambientLight={ambientLight}
+            onSimulateLux={(lux) => lightSensor.simulateLux(lux)}
+            entitlements={entitlements}
+            onUpdateSettings={(newSettings) => setSettings(prev => ({ ...prev, ...newSettings }))}
+            onTriggerPaywall={() => setShowPaywall(true)}
+            onToggleSandboxPro={handleToggleSandboxPro}
+          />
+        )}
 
-      {/* 5. Google Play Billing Modal */}
-      <PaywallModal
-        isOpen={showPaywall}
-        onClose={() => setShowPaywall(false)}
-        entitlements={entitlements}
-        onPurchasePro={handlePurchasePro}
-        onRestorePurchases={() => handlePurchasePro('ANNUAL')}
-      />
+        {/* 5. Google Play Billing Modal */}
+        {showPaywall && (
+          <PaywallModal
+            isOpen={showPaywall}
+            onClose={() => setShowPaywall(false)}
+            entitlements={entitlements}
+            onPurchasePro={handlePurchasePro}
+            onRestorePurchases={() => handlePurchasePro('ANNUAL')}
+          />
+        )}
 
-      {/* 6. Companion Navigation & Split-Screen Modal */}
-      <CompanionNavModal
-        isOpen={showNavCompanion}
-        onClose={() => setShowNavCompanion(false)}
-        selectedNavApp={settings.companionNavApp}
-        onSelectNavApp={(appKey) => setSettings(prev => ({ ...prev, companionNavApp: appKey }))}
-        driveSide={settings.driveSide || 'LHD'}
-        trafficSide={settings.trafficSide || 'RIGHT'}
-        onToggleDriveSide={handleToggleDriveSide}
-        onToggleTrafficSide={handleToggleTrafficSide}
-        nightModeEnabled={isNightModeEffective}
-        speedUnit={settings.speedUnit}
-      />
+        {/* 6. Companion Navigation & Split-Screen Modal */}
+        {showNavCompanion && (
+          <CompanionNavModal
+            isOpen={showNavCompanion}
+            onClose={() => setShowNavCompanion(false)}
+            selectedNavApp={settings.companionNavApp}
+            onSelectNavApp={(appKey) => setSettings(prev => ({ ...prev, companionNavApp: appKey }))}
+            driveSide={settings.driveSide || 'LHD'}
+            trafficSide={settings.trafficSide || 'RIGHT'}
+            onToggleDriveSide={handleToggleDriveSide}
+            onToggleTrafficSide={handleToggleTrafficSide}
+            nightModeEnabled={isNightModeEffective}
+            speedUnit={settings.speedUnit}
+          />
+        )}
 
-      {/* 7. Android Project Explorer & Code Exporter (.ZIP) */}
-      <AndroidProjectExplorer
-        isOpen={showProjectExplorer}
-        onClose={() => setShowProjectExplorer(false)}
-      />
+        {/* 7. Android Project Explorer & Code Exporter (.ZIP) */}
+        {showProjectExplorer && (
+          <AndroidProjectExplorer
+            isOpen={showProjectExplorer}
+            onClose={() => setShowProjectExplorer(false)}
+          />
+        )}
 
-      {/* 8. Automated Verification Test Suite Runner */}
-      <TestRunnerModal
-        isOpen={showTestRunner}
-        onClose={() => setShowTestRunner(false)}
-      />
+        {/* 8. Automated Verification Test Suite Runner */}
+        {showTestRunner && (
+          <TestRunnerModal
+            isOpen={showTestRunner}
+            onClose={() => setShowTestRunner(false)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }
