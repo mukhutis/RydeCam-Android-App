@@ -16,7 +16,9 @@ import {
   VolumeX,
   Eye,
   Moon,
-  Sun
+  Sun,
+  ArrowLeftRight,
+  Navigation
 } from 'lucide-react';
 import {
   DashcamSettings,
@@ -26,7 +28,9 @@ import {
   SpeedUnitOption,
   SensitivityOption,
   NightModePreference,
-  AmbientLightData
+  AmbientLightData,
+  DriveSideOption,
+  TrafficSideOption
 } from '../types/dashcam';
 import { soundAlert } from '../services/soundAlertManager';
 
@@ -404,6 +408,108 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {min} MIN
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          {/* VEHICLE STEERING & ROAD TRAFFIC ORIENTATION */}
+          <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ArrowLeftRight className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+                  Vehicle Steering & Road Traffic Orientation
+                </h3>
+              </div>
+              <span className="text-[11px] font-mono font-bold text-neutral-300">
+                {(settings.driveSide || 'LHD') === 'RHD' ? 'RHD Car' : 'LHD Car'} · {(settings.trafficSide || 'RIGHT') === 'LEFT' ? 'Drive Left' : 'Drive Right'}
+              </span>
+            </div>
+
+            {/* 1. Car Steering Side (LHD vs RHD) */}
+            <div>
+              <span className="text-xs font-bold text-white block mb-1">Car Steering Position (Cockpit Ergonomics)</span>
+              <p className="text-[11px] text-neutral-400 mb-2">
+                Moves HUD primary buttons (NAV, LOCK, Launch App), top bar status, and companion pane to the driver&apos;s seat side.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  {
+                    id: 'LHD' as DriveSideOption,
+                    title: 'Left-Hand Drive (LHD)',
+                    desc: 'Steering wheel & controls on Left'
+                  },
+                  {
+                    id: 'RHD' as DriveSideOption,
+                    title: 'Right-Hand Drive (RHD)',
+                    desc: 'Steering wheel & controls on Right'
+                  }
+                ].map(opt => {
+                  const isSelected = (settings.driveSide || 'LHD') === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => onUpdateSettings({ driveSide: opt.id })}
+                      className={`p-3 rounded-xl border text-left transition flex items-center justify-between ${
+                        isSelected
+                          ? 'bg-cyan-950/60 border-cyan-400 text-white shadow-md'
+                          : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                      }`}
+                    >
+                      <div>
+                        <div className="font-mono text-xs font-bold text-white">{opt.title}</div>
+                        <div className="text-[10px] text-neutral-400 mt-0.5">{opt.desc}</div>
+                      </div>
+                      {isSelected && <CheckCircle className="w-4 h-4 text-cyan-400 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Road Traffic Rule (Drive on Right vs Drive on Left) */}
+            <div className="pt-3 border-t border-neutral-800/80">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-xs font-bold text-white">Road Traffic Side (Lanes & Signs)</span>
+              </div>
+              <p className="text-[11px] text-neutral-400 mb-2">
+                Adapts highway animations, oncoming headlights vs tail lights, roadside TSR speed signs, and route guidance.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  {
+                    id: 'RIGHT' as TrafficSideOption,
+                    title: 'Drive on the Right',
+                    desc: 'Keep Right · Signs on Right (US, EU, CA)'
+                  },
+                  {
+                    id: 'LEFT' as TrafficSideOption,
+                    title: 'Drive on the Left',
+                    desc: 'Keep Left · Signs on Left (UK, JP, AU, IN)'
+                  }
+                ].map(opt => {
+                  const isSelected = (settings.trafficSide || 'RIGHT') === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => onUpdateSettings({ trafficSide: opt.id })}
+                      className={`p-3 rounded-xl border text-left transition flex items-center justify-between ${
+                        isSelected
+                          ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-md'
+                          : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'
+                      }`}
+                    >
+                      <div>
+                        <div className="font-mono text-xs font-bold text-white">{opt.title}</div>
+                        <div className="text-[10px] text-neutral-400 mt-0.5">{opt.desc}</div>
+                      </div>
+                      {isSelected && <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

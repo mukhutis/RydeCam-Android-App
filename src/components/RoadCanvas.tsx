@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, RefreshCw, AlertCircle, Video } from 'lucide-react';
-import { SpeedUnitOption } from '../types/dashcam';
+import { SpeedUnitOption, DriveSideOption, TrafficSideOption } from '../types/dashcam';
 import { lightSensor } from '../services/lightSensorManager';
 
 /**
@@ -11,6 +11,10 @@ export interface RoadCanvasProps {
   speedKmh: number;
   /** Speed measurement unit ('KMH' | 'MPH') for burnt-in OSD watermark */
   speedUnit?: SpeedUnitOption;
+  /** Vehicle steering orientation ('LHD' | 'RHD') controlling cabin PiP & passenger-side control placement */
+  driveSide?: DriveSideOption;
+  /** Road traffic rule ('RIGHT' | 'LEFT') controlling travel lane, oncoming headlights, and sign curb */
+  trafficSide?: TrafficSideOption;
   /** Cumulative trip distance in km for burnt-in OSD watermark */
   tripDistanceKm?: number;
   /** Recording state driving the red REC status watermark */
@@ -45,6 +49,8 @@ export interface RoadCanvasProps {
 export const RoadCanvas: React.FC<RoadCanvasProps> = ({
   speedKmh,
   speedUnit = 'KMH',
+  driveSide = 'LHD',
+  trafficSide = 'RIGHT',
   tripDistanceKm = 0,
   isRecording,
   isDualCameraActive,
@@ -55,6 +61,8 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
   onSignRecognized,
   onWebcamError
 }) => {
+  const isRhd = driveSide === 'RHD';
+  const isLeftTraffic = trafficSide === 'LEFT';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frontVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -63,12 +71,12 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
   const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Highway simulation state
+  // Highway simulation state (lane-aware for LHD vs RHD)
   const animFrameRef = useRef<number | null>(null);
   const roadOffsetRef = useRef(0);
   const carPositionsRef = useRef([
-    { x: -0.3, z: 0.8, speed: 0.005, color: '#e11d48' },
-    { x: 0.35, z: 0.5, speed: 0.007, color: '#38bdf8' }
+    { lane: 'ONCOMING' as const, offset: 0.34, z: 0.8, speed: 0.0085, color: '#e11d48' },
+    { lane: 'SAME_DIR' as const, offset: 0.32, z: 0.5, speed: 0.004, color: '#38bdf8' }
   ]);
 
   // Roadside speed limit sign state for TSR detection
@@ -202,8 +210,8 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       ctx.lineTo(width, height * 0.45);
       ctx.fill();
 
-      // 2. Road surface perspective
-      const vanishingX = width * 0.5;
+      // 2. Road surface perspective (shifts carriageway center slightly based on trafficSide: Drive Left vs Drive Right)
+      const vanishingX = width * (isLeftTraffic ? 0.56 : 0.44);
       const vanishingY = height * 0.45;
 
       const roadGrad = ctx.createLinearGradient(0, vanishingY, 0, height);
@@ -312,14 +320,19 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         ctx.fillRect(rightX1 - 1, y1, Math.max(1, p1 * 4), Math.max(2, y2 - y1));
       }
 
-      // 4. Passing cars in front
+      // 4. Passing & oncoming cars (adapts lane side and headlights/taillights to trafficSide)
       carPositionsRef.current.forEach(car => {
         car.z = (car.z - car.speed * speedFactor);
         if (car.z <= 0.1) car.z = 0.95;
 
         const cz = 1 - car.z; // closer = larger
         const cy = vanishingY + Math.pow(cz, 2.2) * (height - vanishingY) * 0.75;
-        const cx = vanishingX + car.x * Math.pow(cz, 1.8) * width * 0.7;
+        // Drive-on-Right: same-direction is right (+), oncoming is left (-). Drive-on-Left: inverted.
+        const signedLaneX =
+          car.lane === 'SAME_DIR'
+            ? (isLeftTraffic ? -car.offset : car.offset)
+            : (isLeftTraffic ? car.offset : -car.offset);
+        const cx = vanishingX + signedLaneX * Math.pow(cz, 1.8) * width * 0.7;
         const cw = Math.max(8, cz * 60);
         const ch = Math.max(5, cz * 35);
 
@@ -327,13 +340,21 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         ctx.fillStyle = car.color;
         ctx.fillRect(cx - cw / 2, cy - ch, cw, ch * 0.7);
 
-        // Tail lights
-        ctx.fillStyle = '#ef4444';
-        ctx.fillRect(cx - cw / 2 + 2, cy - ch * 0.4, cw * 0.2, ch * 0.3);
-        ctx.fillRect(cx + cw / 2 - cw * 0.2 - 2, cy - ch * 0.4, cw * 0.2, ch * 0.3);
+        if (car.lane === 'ONCOMING') {
+          // Bright oncoming headlights
+          ctx.fillStyle = '#fef9c3';
+          ctx.fillRect(cx - cw / 2 + 2, cy - ch * 0.42, cw * 0.22, ch * 0.32);
+          ctx.fillRect(cx + cw / 2 - cw * 0.22 - 2, cy - ch * 0.42, cw * 0.22, ch * 0.32);
+        } else {
+          // Red rear tail lights in our travel lane
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(cx - cw / 2 + 2, cy - ch * 0.4, cw * 0.2, ch * 0.3);
+          ctx.fillRect(cx + cw / 2 - cw * 0.2 - 2, cy - ch * 0.4, cw * 0.2, ch * 0.3);
+        }
       });
 
       // 5. Roadside Speed Limit Sign with Traffic Sign Recognition (TSR)
+      // Placed on the curb shoulder matching trafficSide (right curb for RIGHT, left curb for LEFT)
       const sign = roadsideSignRef.current;
       sign.z = sign.z - 0.003 * speedFactor;
 
@@ -351,7 +372,8 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       const sz = 1 - sign.z; // 0 to 1 (closer = larger)
       if (sz > 0.08 && sz < 0.98) {
         const sy = vanishingY + Math.pow(sz, 2.2) * (height - vanishingY) * 0.85;
-        const sx = vanishingX + sign.x * Math.pow(sz, 1.8) * width * 0.72;
+        const signedSignX = isLeftTraffic ? -Math.abs(sign.x) : Math.abs(sign.x);
+        const sx = vanishingX + signedSignX * Math.pow(sz, 1.8) * width * 0.72;
         const radius = Math.max(7, sz * 26);
         const poleHeight = radius * 2.8;
 
@@ -398,13 +420,14 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
           // bottom-right
           ctx.beginPath(); ctx.moveTo(sx + boxPad, signCenterY + boxPad - bl); ctx.lineTo(sx + boxPad, signCenterY + boxPad); ctx.lineTo(sx + boxPad - bl, signCenterY + boxPad); ctx.stroke();
 
-          // TSR Detection Tag
+          // TSR Detection Tag clamped inside viewport
+          const tagX = Math.min(Math.max(8, sx - boxPad), width - 96);
           ctx.fillStyle = 'rgba(8, 145, 178, 0.9)';
-          ctx.fillRect(sx - boxPad, signCenterY - boxPad - 16, 88, 14);
+          ctx.fillRect(tagX, signCenterY - boxPad - 16, 88, 14);
           ctx.fillStyle = '#ffffff';
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           ctx.textAlign = 'left';
-          ctx.fillText(`TSR: ${displayLimit} (98%)`, sx - boxPad + 3, signCenterY - boxPad - 5);
+          ctx.fillText(`TSR: ${displayLimit} (98%)`, tagX + 3, signCenterY - boxPad - 5);
 
           // Fire sign recognized callback once per approach
           if (sz >= 0.42 && !sign.hasTriggered) {
@@ -416,10 +439,11 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         }
       }
 
-      // 6. Headlight beam reflection on road
+      // 6. Headlight beam reflection on road (centered ahead of ego vehicle travel lane)
+      const beamX = width * (isLeftTraffic ? 0.38 : 0.62);
       const beamGrad = ctx.createRadialGradient(
-        vanishingX, height, 50,
-        vanishingX, height * 0.65, width * 0.4
+        beamX, height, 50,
+        beamX, height * 0.65, width * 0.38
       );
       if (nightModeEnabled) {
         beamGrad.addColorStop(0, 'rgba(251, 191, 36, 0.16)'); // Warm amber headlight beam
@@ -449,14 +473,17 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
       const limitVal = activeSpeedLimitKmh ? (speedUnit === 'MPH' ? Math.round(activeSpeedLimitKmh * 0.621371) : activeSpeedLimitKmh) : null;
       const limitTxt = limitVal ? ` • LIMIT: ${limitVal}` : '';
       const batTxt = ` • BAT: ${batteryLevel}%${isCharging ? ' ⚡' : ''}`;
+      const laneRuleTxt = isLeftTraffic ? 'KEEP-L' : 'KEEP-R';
+      const osdWidth = Math.min(width - 32, 660);
+      const osdX = isRhd ? Math.max(16, width - osdWidth - 16) : 16;
 
       ctx.fillStyle = nightModeEnabled ? 'rgba(0, 0, 0, 0.82)' : 'rgba(0, 0, 0, 0.65)';
-      ctx.fillRect(16, height - 34, Math.min(width - 32, 600), 22);
+      ctx.fillRect(osdX, height - 34, osdWidth, 22);
       ctx.fillStyle = nightModeEnabled ? '#f59e0b' : '#6ee7b7'; // High-contrast amber in night mode
       ctx.font = '10px "JetBrains Mono", monospace';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`RYDECAM • ${speedTxt}${limitTxt} • TRIP: ${distTxt}${batTxt} • 37.7749°N 122.4194°W`, 24, height - 23);
+      ctx.fillText(`RYDECAM • ${driveSide} · ${laneRuleTxt} • ${speedTxt}${limitTxt} • TRIP: ${distTxt}${batTxt} • 37.7749°N 122.4194°W`, osdX + 8, height - 23);
 
       animFrameRef.current = requestAnimationFrame(render);
     };
@@ -469,7 +496,7 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [useRealCamera, speedKmh, speedUnit, tripDistanceKm, activeSpeedLimitKmh, onSignRecognized, batteryLevel, isCharging, nightModeEnabled]);
+  }, [useRealCamera, speedKmh, speedUnit, driveSide, trafficSide, isRhd, isLeftTraffic, tripDistanceKm, activeSpeedLimitKmh, onSignRecognized, batteryLevel, isCharging, nightModeEnabled]);
 
   // Handle window resizing for sharp canvas
   useEffect(() => {
@@ -505,8 +532,10 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
         />
       )}
 
-      {/* Camera Toggle Button in Top Right */}
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+      {/* Camera Toggle Button (Anchored away from driver side and clear of top HUD bar) */}
+      <div className={`absolute top-28 z-20 flex items-center gap-2 transition-all duration-300 ${
+        isRhd ? 'left-4' : 'right-4'
+      }`}>
         <button
           onClick={toggleRealCamera}
           disabled={cameraLoading}
@@ -524,13 +553,15 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
           ) : (
             <Video className="w-3.5 h-3.5 text-cyan-400" />
           )}
-          <span>{useRealCamera ? 'Using Camera' : 'Road Sim (Click for Cam)'}</span>
+          <span className="whitespace-nowrap">{useRealCamera ? 'Using Camera' : 'Road Sim (Click for Cam)'}</span>
         </button>
       </div>
 
-      {/* Dual Cabin Selfie Camera Picture-in-Picture (PiP) */}
+      {/* Dual Cabin Selfie Camera Picture-in-Picture (PiP) - Positioned on passenger side */}
       {isDualCameraActive && (
-        <div className="absolute bottom-24 right-4 z-20 w-44 h-28 rounded-lg overflow-hidden border-2 border-cyan-500/80 shadow-2xl bg-neutral-900/90 backdrop-blur-md flex flex-col">
+        <div className={`absolute bottom-36 z-20 w-44 h-28 rounded-lg overflow-hidden border-2 border-cyan-500/80 shadow-2xl bg-neutral-900/90 backdrop-blur-md flex flex-col transition-all duration-300 ${
+          isRhd ? 'left-4' : 'right-4'
+        }`}>
           <div className="px-2 py-1 bg-neutral-950/80 text-[10px] font-bold text-cyan-300 flex items-center justify-between border-b border-neutral-800">
             <span>CABIN DUAL CAM</span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -582,17 +613,21 @@ export const RoadCanvas: React.FC<RoadCanvasProps> = ({
             }`}>TSR SCAN REGION</span>
           </div>
 
-          <div className={`bg-black/85 px-3 py-1.5 rounded text-[10px] font-mono self-start transition-colors ${
+          <div className={`bg-black/85 px-3 py-1.5 rounded text-[10px] font-mono transition-colors ${
+            isRhd ? 'self-end' : 'self-start'
+          } ${
             nightModeEnabled ? 'text-amber-400' : 'text-emerald-400'
           }`}>
-            RYDECAM LIVE • {speedUnit === 'MPH' ? `${Math.round(speedKmh * 0.621371)} M/HR` : `${Math.round(speedKmh)} KM/HR`} {activeSpeedLimitKmh ? `• LIMIT: ${speedUnit === 'MPH' ? Math.round(activeSpeedLimitKmh * 0.621371) : activeSpeedLimitKmh}` : ''} • BAT: {batteryLevel}% {isCharging ? '⚡ CHG' : ''}
+            RYDECAM LIVE • {driveSide} · {isLeftTraffic ? 'KEEP-L' : 'KEEP-R'} • {speedUnit === 'MPH' ? `${Math.round(speedKmh * 0.621371)} M/HR` : `${Math.round(speedKmh)} KM/HR`} {activeSpeedLimitKmh ? `• LIMIT: ${speedUnit === 'MPH' ? Math.round(activeSpeedLimitKmh * 0.621371) : activeSpeedLimitKmh}` : ''} • BAT: {batteryLevel}% {isCharging ? '⚡ CHG' : ''}
           </div>
         </div>
       )}
 
-      {/* Camera error pill if permission failed */}
+      {/* Camera error banner if permission failed */}
       {cameraError && (
-        <div className="absolute top-16 right-4 z-20 max-w-xs bg-red-950/90 border border-red-700 text-red-200 text-xs px-3 py-2 rounded shadow-lg flex items-start gap-2">
+        <div className={`absolute top-28 z-20 max-w-xs bg-red-950/90 border border-red-700 text-red-200 text-xs px-3 py-2 rounded shadow-lg flex items-start gap-2 ${
+          isRhd ? 'left-4' : 'right-4'
+        }`}>
           <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
           <span>{cameraError}</span>
         </div>

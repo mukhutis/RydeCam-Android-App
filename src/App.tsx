@@ -51,6 +51,8 @@ const DEFAULT_SETTINGS: DashcamSettings = {
   audioRecordingEnabled: false,
   gpsOverlayEnabled: true,
   speedUnit: 'KMH',
+  driveSide: 'LHD',
+  trafficSide: 'RIGHT',
   accidentDetectionEnabled: true,
   accidentSensitivity: 'MEDIUM',
   customGThreshold: 2.5,
@@ -588,6 +590,22 @@ export default function App() {
     setIsCharging(prev => !prev);
   };
 
+  // Toggle Left-Hand Drive (LHD) vs Right-Hand Drive (RHD) car steering side
+  const handleToggleDriveSide = () => {
+    setSettings(prev => ({
+      ...prev,
+      driveSide: prev.driveSide === 'RHD' ? 'LHD' : 'RHD'
+    }));
+  };
+
+  // Toggle Drive-on-the-Right vs Drive-on-the-Left road traffic rule
+  const handleToggleTrafficSide = () => {
+    setSettings(prev => ({
+      ...prev,
+      trafficSide: prev.trafficSide === 'LEFT' ? 'RIGHT' : 'LEFT'
+    }));
+  };
+
   return (
     <div className={`relative w-screen h-screen overflow-hidden font-sans transition-colors duration-500 ${
       isNightModeEffective ? 'bg-black' : 'bg-neutral-950'
@@ -596,6 +614,8 @@ export default function App() {
       <RoadCanvas
         speedKmh={telemetry.speedKmh}
         speedUnit={settings.speedUnit}
+        driveSide={settings.driveSide || 'LHD'}
+        trafficSide={settings.trafficSide || 'RIGHT'}
         tripDistanceKm={telemetry.tripDistanceKm}
         activeSpeedLimitKmh={detectedSpeedLimit.limitKmh}
         batteryLevel={batteryLevel}
@@ -615,6 +635,8 @@ export default function App() {
         resolution={settings.videoResolution}
         isAudioEnabled={settings.audioRecordingEnabled}
         speedUnit={settings.speedUnit}
+        driveSide={settings.driveSide || 'LHD'}
+        trafficSide={settings.trafficSide || 'RIGHT'}
         currentGForce={currentGForce}
         activeIncidentMessage={activeIncidentMessage}
         detectedSpeedLimit={detectedSpeedLimit}
@@ -628,6 +650,8 @@ export default function App() {
         nightModePreference={settings.nightModePreference || 'AUTO'}
         ambientLight={ambientLight}
         onToggleNightMode={handleToggleNightMode}
+        onToggleDriveSide={handleToggleDriveSide}
+        onToggleTrafficSide={handleToggleTrafficSide}
         onToggleCharging={handleToggleCharging}
         onToggleRecording={() => setIsRecording(prev => !prev)}
         onToggleSpeedUnit={handleToggleSpeedUnit}
@@ -691,6 +715,12 @@ export default function App() {
         onClose={() => setShowNavCompanion(false)}
         selectedNavApp={settings.companionNavApp}
         onSelectNavApp={(appKey) => setSettings(prev => ({ ...prev, companionNavApp: appKey }))}
+        driveSide={settings.driveSide || 'LHD'}
+        trafficSide={settings.trafficSide || 'RIGHT'}
+        onToggleDriveSide={handleToggleDriveSide}
+        onToggleTrafficSide={handleToggleTrafficSide}
+        nightModeEnabled={isNightModeEffective}
+        speedUnit={settings.speedUnit}
       />
 
       {/* 7. Android Project Explorer & Code Exporter (.ZIP) */}

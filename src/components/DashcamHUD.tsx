@@ -27,7 +27,8 @@ import {
   Eye,
   AlertTriangle,
   Moon,
-  Sun
+  Sun,
+  ArrowLeftRight
 } from 'lucide-react';
 import {
   StorageStats,
@@ -36,7 +37,9 @@ import {
   SpeedUnitOption,
   SpeedLimitSign,
   NightModePreference,
-  AmbientLightData
+  AmbientLightData,
+  DriveSideOption,
+  TrafficSideOption
 } from '../types/dashcam';
 
 /**
@@ -79,10 +82,18 @@ export interface DashcamHUDProps {
   nightModeEnabled?: boolean;
   /** Active night mode preference policy ('AUTO' | 'ALWAYS_ON' | 'ALWAYS_OFF') */
   nightModePreference?: NightModePreference;
+  /** Cockpit drive orientation ('LHD' | 'RHD') adapting HUD button placement */
+  driveSide?: DriveSideOption;
+  /** Road traffic rule ('RIGHT' | 'LEFT') controlling road curb sign alignment */
+  trafficSide?: TrafficSideOption;
   /** Real-time ambient illuminance and sensor diagnostic status */
   ambientLight?: AmbientLightData;
   /** Callback to toggle night mode directly from the cockpit HUD */
   onToggleNightMode?: () => void;
+  /** Callback to toggle Left-Hand Drive (LHD) vs Right-Hand Drive (RHD) cockpit layout */
+  onToggleDriveSide?: () => void;
+  /** Callback to toggle Drive-on-the-Right vs Drive-on-the-Left road traffic rule */
+  onToggleTrafficSide?: () => void;
   /** Callback to toggle between 12V automotive power and internal battery backup */
   onToggleCharging?: () => void;
   /** Callback to toggle recording state (triggers guard dialog if recording is stopped) */
@@ -129,6 +140,8 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
   resolution,
   isAudioEnabled,
   speedUnit,
+  driveSide = 'LHD',
+  trafficSide = 'RIGHT',
   currentGForce,
   activeIncidentMessage,
   detectedSpeedLimit,
@@ -142,6 +155,8 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
   nightModePreference = 'AUTO',
   ambientLight,
   onToggleNightMode,
+  onToggleDriveSide,
+  onToggleTrafficSide,
   onToggleCharging,
   onToggleRecording,
   onToggleSpeedUnit,
@@ -158,6 +173,8 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
 }) => {
   const [showStopConfirm, setShowStopConfirm] = useState(false);
 
+  const isRhd = driveSide === 'RHD';
+  const isLeftTraffic = trafficSide === 'LEFT';
   const isMph = speedUnit === 'MPH';
   const speedUnitLabel = isMph ? 'm/hr' : 'km/hr';
   const distanceUnitLabel = isMph ? 'miles' : 'km';
@@ -191,12 +208,16 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
           ? 'bg-black/94 border-amber-950/80 shadow-amber-950/20'
           : 'bg-neutral-950/85 border-neutral-800/80'
       }`}>
-        <div className="flex items-center justify-between gap-2">
+        <div className={`flex items-center justify-between gap-2 transition-all duration-300 ${
+          isRhd ? 'flex-row-reverse' : 'flex-row'
+        }`}>
 
-          {/* Left: RydeCam Brand Title, REC Indicator & Elapsed Timer */}
-          <div className="flex items-center gap-3">
-            <div className={`flex items-center gap-2 pr-3 border-r ${
-              nightModeEnabled ? 'border-amber-950/80' : 'border-neutral-800'
+          {/* Driver-Side: RydeCam Brand Title, REC Indicator & Elapsed Timer */}
+          <div className={`flex items-center gap-3 ${isRhd ? 'flex-row-reverse' : 'flex-row'}`}>
+            <div className={`flex items-center gap-2 ${
+              isRhd
+                ? `flex-row-reverse pl-3 border-l ${nightModeEnabled ? 'border-amber-950/80' : 'border-neutral-800'}`
+                : `pr-3 border-r ${nightModeEnabled ? 'border-amber-950/80' : 'border-neutral-800'}`
             }`}>
               <div className={`w-8 h-8 rounded-lg overflow-hidden border flex items-center justify-center shrink-0 shadow-md ${
                 nightModeEnabled
@@ -209,7 +230,7 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
                   className="w-full h-full object-cover"
                 />
               </div>
-              <div className="flex flex-col">
+              <div className={`flex flex-col ${isRhd ? 'items-end' : 'items-start'}`}>
                 <div className="flex items-center gap-1.5 leading-none">
                   <span className={`font-black text-sm tracking-wider ${
                     nightModeEnabled ? 'text-amber-100' : 'text-white'
@@ -253,12 +274,56 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
             </div>
           </div>
 
-          {/* Center-Right Badges: Night Mode Toggle, Resolution, Mic, Battery, Temp */}
-          <div className="flex items-center gap-2">
+          {/* Opposite-Side Badges: LHD/RHD Toggle, Night Mode Toggle, Resolution, Mic, Battery, Temp */}
+          <div className={`flex items-center gap-2 ${isRhd ? 'flex-row-reverse' : 'flex-row'}`}>
+            {/* Quick LHD / RHD Car Steering Toggle */}
+            <button
+              onClick={onToggleDriveSide}
+              className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border transition-colors cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                nightModeEnabled
+                  ? isRhd
+                    ? 'bg-amber-950/90 text-amber-200 border-amber-500/70 hover:bg-amber-900'
+                    : 'bg-neutral-950 text-amber-300 border-amber-900/60 hover:bg-neutral-900'
+                  : isRhd
+                    ? 'bg-cyan-950/80 text-cyan-300 border-cyan-500/70 hover:bg-cyan-900'
+                    : 'bg-neutral-900/90 text-neutral-300 border-neutral-700/60 hover:text-white hover:bg-neutral-800'
+              }`}
+              title={
+                isRhd
+                  ? 'Car: Right-Hand Drive (Driver Right). Click to switch to Left-Hand Drive.'
+                  : 'Car: Left-Hand Drive (Driver Left). Click to switch to Right-Hand Drive.'
+              }
+            >
+              <ArrowLeftRight className={`w-3 h-3 ${nightModeEnabled ? 'text-amber-400' : 'text-cyan-400'}`} />
+              <span className="font-mono font-bold text-[10px]">{driveSide}</span>
+            </button>
+
+            {/* Quick Drive-on-Right / Drive-on-Left Traffic Rule Toggle */}
+            <button
+              onClick={onToggleTrafficSide}
+              className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border transition-colors cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                nightModeEnabled
+                  ? isLeftTraffic
+                    ? 'bg-amber-950/90 text-amber-200 border-amber-500/70 hover:bg-amber-900'
+                    : 'bg-neutral-950 text-amber-300 border-amber-900/60 hover:bg-neutral-900'
+                  : isLeftTraffic
+                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/70 hover:bg-emerald-900'
+                    : 'bg-neutral-900/90 text-neutral-300 border-neutral-700/60 hover:text-white hover:bg-neutral-800'
+              }`}
+              title={
+                isLeftTraffic
+                  ? 'Traffic: Drive on the Left. Click to switch to Drive on the Right.'
+                  : 'Traffic: Drive on the Right. Click to switch to Drive on the Left.'
+              }
+            >
+              <Navigation className={`w-3 h-3 ${nightModeEnabled ? 'text-amber-400' : 'text-emerald-400'}`} />
+              <span className="font-mono font-bold text-[10px]">{isLeftTraffic ? 'DRIVE L' : 'DRIVE R'}</span>
+            </button>
+
             {/* Quick Night Mode Anti-Glare & Auto Light Sensing Toggle */}
             <button
               onClick={onToggleNightMode}
-              className={`flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded border transition-colors cursor-pointer select-none ${
+              className={`flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded border transition-colors cursor-pointer select-none whitespace-nowrap shrink-0 ${
                 nightModeEnabled
                   ? 'bg-amber-950/80 text-amber-300 border-amber-500/60 hover:bg-amber-900 shadow-sm'
                   : 'bg-neutral-900/90 text-neutral-400 border-neutral-700/60 hover:text-neutral-200'
@@ -460,8 +525,10 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
           </div>
         )}
 
-        {/* Speedometer numerals and Traffic Sign Recognition (TSR) Badge */}
-        <div className="flex items-center justify-center gap-3 sm:gap-6">
+        {/* Speedometer numerals and Traffic Sign Recognition (TSR) Badge (Mirrored by trafficSide to match road curb sign side) */}
+        <div className={`flex items-center justify-center gap-3 sm:gap-6 transition-all duration-300 ${
+          isLeftTraffic ? 'flex-row-reverse' : 'flex-row'
+        }`}>
           {/* Main Speedometer */}
           <div className="flex items-baseline justify-center">
             <span
@@ -675,13 +742,15 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
         </div>
       </div>
 
-      {/* 3. BOTTOM AUTOMOTIVE DOCK */}
+      {/* 3. BOTTOM AUTOMOTIVE DOCK (Mirrored in RHD so NAV & LOCK stay closest to driver's right hand) */}
       <div className={`pointer-events-auto backdrop-blur-md rounded-2xl p-3 border shadow-2xl flex flex-col gap-2 transition-colors ${
         nightModeEnabled
           ? 'bg-black/94 border-amber-950/80 shadow-amber-950/30'
           : 'bg-neutral-950/90 border-neutral-800'
       }`}>
-        <div className="flex items-center justify-around gap-2 max-w-2xl mx-auto w-full">
+        <div className={`flex items-center justify-around gap-2 max-w-2xl mx-auto w-full transition-all duration-300 ${
+          isRhd ? 'flex-row-reverse' : 'flex-row'
+        }`}>
 
           {/* Navigation Companion Button */}
           <button
@@ -762,12 +831,12 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
         </div>
 
         {/* Secondary Utility Dock: Android Code Explorer & Verification Test Runner */}
-        <div className={`flex items-center justify-center gap-3 pt-1 border-t text-xs ${
+        <div className={`flex flex-wrap items-center justify-center gap-3 pt-1 border-t text-xs ${
           nightModeEnabled ? 'border-amber-950/60' : 'border-neutral-800/60'
-        }`}>
+        } ${isRhd ? 'flex-row-reverse' : 'flex-row'}`}>
           <button
             onClick={onOpenProjectExplorer}
-            className={`flex items-center gap-1.5 font-semibold px-3 py-1 rounded border transition ${
+            className={`flex items-center gap-1.5 font-semibold px-3 py-1 rounded border transition whitespace-nowrap ${
               nightModeEnabled
                 ? 'text-amber-400 hover:text-amber-300 bg-neutral-950 hover:bg-neutral-900 border-amber-900/50'
                 : 'text-cyan-400 hover:text-cyan-300 bg-neutral-900/60 hover:bg-neutral-900 border-neutral-700/50'
@@ -777,9 +846,15 @@ export const DashcamHUD: React.FC<DashcamHUDProps> = ({
             <span>Android Studio Code & ZIP</span>
           </button>
 
+          <span className={`text-[10px] font-mono hidden sm:inline ${
+            nightModeEnabled ? 'text-amber-300/60' : 'text-neutral-500'
+          }`}>
+            {isRhd ? 'Car: RHD (Right)' : 'Car: LHD (Left)'} · {isLeftTraffic ? 'Road: Drive Left' : 'Road: Drive Right'}
+          </span>
+
           <button
             onClick={onOpenTestRunner}
-            className={`flex items-center gap-1.5 font-semibold px-3 py-1 rounded border transition ${
+            className={`flex items-center gap-1.5 font-semibold px-3 py-1 rounded border transition whitespace-nowrap ${
               nightModeEnabled
                 ? 'text-amber-400 hover:text-amber-300 bg-neutral-950 hover:bg-neutral-900 border-amber-900/50'
                 : 'text-emerald-400 hover:text-emerald-300 bg-neutral-900/60 hover:bg-neutral-900 border-neutral-700/50'

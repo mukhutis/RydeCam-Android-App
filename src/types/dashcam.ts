@@ -27,6 +27,20 @@ export type VideoResolutionOption = '1080p' | '4K';
 export type SpeedUnitOption = 'KMH' | 'MPH';
 
 /**
+ * Vehicle steering-wheel & cockpit seating orientation.
+ * - `LHD`: Left-Hand Drive car (driver seated on the left; cockpit controls bias left).
+ * - `RHD`: Right-Hand Drive car (driver seated on the right; cockpit controls bias right).
+ */
+export type DriveSideOption = 'LHD' | 'RHD';
+
+/**
+ * Regional road-traffic direction rule (carriageway driving side).
+ * - `RIGHT`: Drive-on-the-right traffic rules (US, Canada, continental Europe).
+ * - `LEFT`: Drive-on-the-left traffic rules (UK, Japan, Australia, India, Ireland).
+ */
+export type TrafficSideOption = 'RIGHT' | 'LEFT';
+
+/**
  * Storage quota limits (in gigabytes) allocated for dashcam video ring buffer.
  * When utilized capacity approaches this quota, FIFO pruning deletes oldest unprotected clips.
  */
@@ -67,6 +81,10 @@ export interface DashcamSettings {
   gpsOverlayEnabled: boolean;
   /** Preferred measurement system for cockpit speedometer and OSD */
   speedUnit: SpeedUnitOption;
+  /** Vehicle steering-wheel orientation ('LHD' driver-left vs 'RHD' driver-right) for cockpit HUD ergonomics */
+  driveSide: DriveSideOption;
+  /** Road traffic driving side ('RIGHT' vs 'LEFT') controlling lanes, oncoming cars, and road signs */
+  trafficSide: TrafficSideOption;
   /** Enables automatic G-sensor collision and harsh braking event detection */
   accidentDetectionEnabled: boolean;
   /** Sensitivity tier for accelerometer impact classification */
